@@ -1,34 +1,39 @@
-import os
+[gd_scene load_steps=6 format=3 uid="uid://testchamber"]
 
-main_tscn_content = """[gd_scene load_steps=6 format=3 uid="uid://testchamber"][ext_resource type="PackedScene" path="res://scenes/entities/Player.tscn" id="1_player"][ext_resource type="PackedScene" path="res://scenes/entities/EnemyBase.tscn" id="2_enemy"][sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+[ext_resource type="PackedScene" uid="uid://f6bqct7ms4rf" path="res://scenes/entities/Player.tscn" id="1_player"]
+[ext_resource type="PackedScene" uid="uid://dk5dhiv0s2qot" path="res://scenes/entities/EnemyBase.tscn" id="2_enemy"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+
 [sub_resource type="Sky" id="Sky_env"]
 sky_material = SubResource("ProceduralSkyMaterial_sky")
+
 [sub_resource type="Environment" id="Environment_main"]
 background_mode = 2
 sky = SubResource("Sky_env")
 tonemap_mode = 2
 glow_enabled = true
 
-[node name="Main" type="Node3D"][node name="WorldEnvironment" type="WorldEnvironment" parent="."]
-environment = SubResource("Environment_main")[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+[node name="Main" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_main")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
 transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 10, 0)
 shadow_enabled = true
 
 [node name="ArenaFloor" type="CSGBox3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 use_collision = true
-collision_layer = 1
-size = Vector3(20, 1, 20)[node name="Player" parent="." instance=ExtResource("1_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4)[node name="EnemyBase" parent="." instance=ExtResource("2_enemy")]
+size = Vector3(20, 1, 20)
+
+[node name="Player" parent="." instance=ExtResource("1_player")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4)
+
+[node name="EnemyBase" parent="." instance=ExtResource("2_enemy")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -4)
 
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 6, 9)
 current = true
-"""
-
-os.makedirs("/root/project/scenes/world/", exist_ok=True)
-with open("/root/project/scenes/world/Main.tscn", "w") as f:
-    f.write(main_tscn_content)
-
-print("PHOENIX_LOG: Main.tscn Test Chamber successfully generated.")

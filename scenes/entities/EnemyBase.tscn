@@ -1,0 +1,48 @@
+[gd_scene load_steps=9 format=3 uid="uid://dk5dhiv0s2qot"]
+
+[ext_resource type="Script" path="res://scripts/entities/enemies/EnemyBase.gd" id="1_EnemyBase"]
+[ext_resource type="Script" path="res://scripts/components/HealthComponent.gd" id="2_HealthComponent"]
+[ext_resource type="Script" path="res://scripts/components/NavigationComponent.gd" id="3_NavigationComponent"]
+[ext_resource type="Script" path="res://scripts/components/HurtboxComponent.gd" id="4_HurtboxComponent"]
+[ext_resource type="Script" path="res://scripts/components/state_machine/StateMachine.gd" id="5_StateMachine"]
+[ext_resource type="Script" path="res://scripts/entities/enemies/states/AIChaseState.gd" id="6_AIChaseState"]
+[ext_resource type="Script" path="res://scripts/entities/enemies/states/AIAttackState.gd" id="7_AIAttackState"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_enemy"]
+
+[node name="EnemyBase" type="CharacterBody3D" node_paths=PackedStringArray("state_machine")]
+script = ExtResource("1_EnemyBase")
+state_machine = NodePath("StateMachine")
+nav_comp = NodePath("NavigationComponent")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+shape = SubResource("CapsuleShape3D_enemy")
+
+[node name="Visuals" type="Node3D" parent="."]
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="Visuals"]
+
+[node name="HealthComponent" type="Node" parent="."]
+script = ExtResource("2_HealthComponent")
+
+[node name="NavigationComponent" type="Node" parent="."]
+script = ExtResource("3_NavigationComponent")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="NavigationComponent"]
+
+[node name="HurtboxComponent" type="Area3D" parent="."]
+script = ExtResource("4_HurtboxComponent")
+team_id = 1
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HurtboxComponent"]
+shape = SubResource("CapsuleShape3D_enemy")
+
+[node name="StateMachine" type="Node" parent="."]
+script = ExtResource("5_StateMachine")
+initial_state = NodePath("AIChaseState")
+
+[node name="AIChaseState" type="Node" parent="StateMachine"]
+script = ExtResource("6_AIChaseState")
+
+[node name="AIAttackState" type="Node" parent="StateMachine"]
+script = ExtResource("7_AIAttackState")

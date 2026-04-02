@@ -1,5 +1,5 @@
 extends Node
-class_name SaveManager
+
 
 const SAVE_PATH = "user://nexus_save.res"
 

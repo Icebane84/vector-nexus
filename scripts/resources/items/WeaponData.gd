@@ -1,11 +1,11 @@
-extends Node
+# res://scripts/resources/items/WeaponData.gd
+extends ItemData
+class_name WeaponData
 
+@export_group("Combat Stats")
+@export var damage: float = 15.0
+@export var poise_damage: float = 20.0
+@export var attack_speed_mult: float = 1.0
 
-# Called when the node enters the scene tree for the first time.
-func _ready() -> void:
-	pass # Replace with function body.
-
-
-# Called every frame. 'delta' is the elapsed time since the previous frame.
-func _process(delta: float) -> void:
-	pass
+@export_group("Visuals")
+@export var weapon_model: PackedScene

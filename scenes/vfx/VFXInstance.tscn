@@ -1,0 +1,31 @@
+[gd_scene load_steps=5 format=3 uid="uid://vfxinstance"]
+
+[ext_resource type="Script" path="res://scripts/systems/vfx/VFXInstance.gd" id="1_vfx"]
+
+[sub_resource type="ParticleProcessMaterial" id="ParticleProcessMaterial_spark"]
+direction = Vector3(0, 1, 0)
+spread = 180.0
+initial_velocity_min = 3.0
+initial_velocity_max = 5.0
+
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_spark"]
+albedo_color = Color(1, 0.8, 0.2, 1)
+emission_enabled = true
+emission = Color(1, 0.5, 0, 1)
+emission_energy_multiplier = 2.0
+
+[sub_resource type="BoxMesh" id="BoxMesh_spark"]
+material = SubResource("StandardMaterial3D_spark")
+size = Vector3(0.1, 0.1, 0.1)
+
+[node name="VFXInstance" type="Node3D"]
+script = ExtResource("1_vfx")
+
+[node name="Particles" type="GPUParticles3D" parent="."]
+emitting = false
+amount = 12
+lifetime = 0.5
+one_shot = true
+explosiveness = 1.0
+process_material = SubResource("ParticleProcessMaterial_spark")
+draw_pass_1 = SubResource("BoxMesh_spark")

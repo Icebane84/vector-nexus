@@ -1,5 +1,5 @@
 extends Node
-class_name QuestManager
+
 @export var active_quests: Array[QuestData] = []
 func _ready() -> void:
 	Director.quest_system = self

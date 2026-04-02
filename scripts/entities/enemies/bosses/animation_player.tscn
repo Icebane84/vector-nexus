@@ -1,0 +1,46 @@
+[gd_scene load_steps=11 format=3 uid="uid://cs5aum1t0hr5b"]
+
+[sub_resource type="Animation" id="Animation_yttv7"]
+resource_name = "attack_active"
+
+[sub_resource type="Animation" id="Animation_quokr"]
+resource_name = "attack_recovery"
+
+[sub_resource type="Animation" id="Animation_ndv5u"]
+resource_name = "attack_startup"
+
+[sub_resource type="Animation" id="Animation_j2gdf"]
+resource_name = "death"
+
+[sub_resource type="Animation" id="Animation_c6yc8"]
+resource_name = "dodge"
+
+[sub_resource type="Animation" id="Animation_rduip"]
+resource_name = "idle"
+
+[sub_resource type="Animation" id="Animation_dr8rh"]
+resource_name = "move"
+
+[sub_resource type="Animation" id="Animation_vo1qt"]
+resource_name = "parry_active"
+
+[sub_resource type="Animation" id="Animation_whst1"]
+resource_name = "stagger_hit"
+
+[sub_resource type="AnimationLibrary" id="AnimationLibrary_u8d34"]
+_data = {
+"attack_active": SubResource("Animation_yttv7"),
+"attack_recovery": SubResource("Animation_quokr"),
+"attack_startup": SubResource("Animation_ndv5u"),
+"death": SubResource("Animation_j2gdf"),
+"dodge": SubResource("Animation_c6yc8"),
+"idle": SubResource("Animation_rduip"),
+"move": SubResource("Animation_dr8rh"),
+"parry_active": SubResource("Animation_vo1qt"),
+"stagger_hit": SubResource("Animation_whst1")
+}
+
+[node name="AnimationPlayer" type="AnimationPlayer"]
+libraries = {
+"": SubResource("AnimationLibrary_u8d34")
+}

@@ -1,0 +1,80 @@
+[gd_scene load_steps=15 format=3 uid="uid://f6bqct7ms4rf"]
+
+[ext_resource type="Script" path="res://scripts/entities/player/Player.gd" id="1_Player"]
+[ext_resource type="Script" path="res://scripts/entities/player/PlayerCamera.gd" id="2_PlayerCamera"]
+[ext_resource type="Script" path="res://scripts/components/HealthComponent.gd" id="3_HealthComponent"]
+[ext_resource type="Script" path="res://scripts/components/PoiseComponent.gd" id="4_PoiseComponent"]
+[ext_resource type="Script" path="res://scripts/components/HitboxComponent.gd" id="5_HitboxComponent"]
+[ext_resource type="Script" path="res://scripts/components/HurtboxComponent.gd" id="6_HurtboxComponent"]
+[ext_resource type="Script" path="res://scripts/components/state_machine/StateMachine.gd" id="7_StateMachine"]
+[ext_resource type="Script" path="res://scripts/entities/player/states/PlayerIdleState.gd" id="8_PlayerIdleState"]
+[ext_resource type="Script" path="res://scripts/entities/player/states/PlayerMoveState.gd" id="9_PlayerMoveState"]
+[ext_resource type="Script" path="res://scripts/entities/player/states/PlayerAttackState.gd" id="10_PlayerAttackState"]
+[ext_resource type="Script" path="res://scripts/entities/player/states/PlayerDodgeState.gd" id="11_PlayerDodgeState"]
+[ext_resource type="Script" path="res://scripts/entities/player/states/PlayerParryState.gd" id="12_PlayerParryState"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_3fgmj"]
+
+[node name="Player" type="CharacterBody3D" node_paths=PackedStringArray("state_machine")]
+script = ExtResource("1_Player")
+state_machine = NodePath("StateMachine")
+camera = NodePath("CameraPivot")
+visuals = NodePath("Visuals")
+
+[node name="Collision" type="CollisionShape3D" parent="."]
+unique_name_in_owner = true
+shape = SubResource("CapsuleShape3D_player")
+
+[node name="Visuals" type="Node3D" parent="."]
+
+[node name="AnimationPlayer" type="AnimationPlayer" parent="Visuals"]
+
+[node name="CameraPivot" type="SpringArm3D" parent="."]
+script = ExtResource("2_PlayerCamera")
+
+[node name="Camera3D" type="Camera3D" parent="CameraPivot"]
+
+[node name="HealthComponent" type="Node" parent="."]
+script = ExtResource("3_HealthComponent")
+
+[node name="PoiseComponent" type="Node" parent="."]
+script = ExtResource("4_PoiseComponent")
+
+[node name="HurtboxComponent" type="Area3D" parent="." node_paths=PackedStringArray("health_component", "poise_component")]
+script = ExtResource("6_HurtboxComponent")
+health_component = NodePath("../HealthComponent")
+poise_component = NodePath("../PoiseComponent")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HurtboxComponent"]
+shape = SubResource("CapsuleShape3D_player")
+
+[node name="HitboxComponent" type="Area3D" parent="."]
+script = ExtResource("5_HitboxComponent")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HitboxComponent"]
+shape = SubResource("CapsuleShape3D_3fgmj")
+
+[node name="StateMachine" type="Node" parent="."]
+script = ExtResource("7_StateMachine")
+initial_state = NodePath("PlayerIdleState")
+
+[node name="PlayerIdleState" type="Node" parent="StateMachine"]
+script = ExtResource("8_PlayerIdleState")
+
+[node name="PlayerMoveState" type="Node" parent="StateMachine"]
+script = ExtResource("9_PlayerMoveState")
+state_id = 1
+
+[node name="PlayerAttackState" type="Node" parent="StateMachine"]
+script = ExtResource("10_PlayerAttackState")
+state_id = 2
+
+[node name="PlayerDodgeState" type="Node" parent="StateMachine"]
+script = ExtResource("11_PlayerDodgeState")
+state_id = 3
+
+[node name="PlayerParryState" type="Node" parent="StateMachine"]
+script = ExtResource("12_PlayerParryState")
+state_id = 4
