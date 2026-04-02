@@ -1,3 +1,14 @@
-# Godot 4+ specific ignores
+# Godot-specific ignores
 .godot/
-/android/
+*.tmp
+
+# Export-related ignores
+android/
+ios/
+*.focus
+export_presets.cfg
+
+# Mono-specific ignores (if using C#)
+.mono/
+data_*/
+mono_crash.*.json
