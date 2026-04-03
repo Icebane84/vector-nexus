@@ -1,4 +1,4 @@
-[gd_scene load_steps=9 format=3 uid="uid://dk5dhiv0s2qot"]
+[gd_scene load_steps=10 format=3 uid="uid://dk5dhiv0s2qot"]
 
 [ext_resource type="Script" path="res://scripts/entities/enemies/EnemyBase.gd" id="1_EnemyBase"]
 [ext_resource type="Script" path="res://scripts/components/HealthComponent.gd" id="2_HealthComponent"]
@@ -10,7 +10,9 @@
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_enemy"]
 
-[node name="EnemyBase" type="CharacterBody3D" node_paths=PackedStringArray("state_machine")]
+[sub_resource type="BoxMesh" id="BoxMesh_la7cj"]
+
+[node name="EnemyBase" type="CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp")]
 script = ExtResource("1_EnemyBase")
 state_machine = NodePath("StateMachine")
 nav_comp = NodePath("NavigationComponent")
@@ -22,13 +24,11 @@ shape = SubResource("CapsuleShape3D_enemy")
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="Visuals"]
 
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Visuals"]
+mesh = SubResource("BoxMesh_la7cj")
+
 [node name="HealthComponent" type="Node" parent="."]
 script = ExtResource("2_HealthComponent")
-
-[node name="NavigationComponent" type="Node" parent="."]
-script = ExtResource("3_NavigationComponent")
-
-[node name="NavigationAgent3D" type="NavigationAgent3D" parent="NavigationComponent"]
 
 [node name="HurtboxComponent" type="Area3D" parent="."]
 script = ExtResource("4_HurtboxComponent")
@@ -39,10 +39,15 @@ shape = SubResource("CapsuleShape3D_enemy")
 
 [node name="StateMachine" type="Node" parent="."]
 script = ExtResource("5_StateMachine")
-initial_state = NodePath("AIChaseState")
 
 [node name="AIChaseState" type="Node" parent="StateMachine"]
 script = ExtResource("6_AIChaseState")
 
 [node name="AIAttackState" type="Node" parent="StateMachine"]
 script = ExtResource("7_AIAttackState")
+
+[node name="NavigationComponent" type="Node3D" parent="." node_paths=PackedStringArray("nav_agent")]
+script = ExtResource("3_NavigationComponent")
+nav_agent = NodePath("NavigationAgent3D")
+
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="NavigationComponent"]

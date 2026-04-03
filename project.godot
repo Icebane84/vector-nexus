@@ -19,10 +19,6 @@ config/icon="res://icon.svg"
 
 Director="*res://scripts/globals/Director.gd"
 GameEvents="*res://scripts/globals/GameEvents.gd"
-CombatDirector="*res://scripts/systems/CombatDirector.gd"
-VfxPool="*res://scripts/systems/vfx/VFXPool.gd"
-QuestManager="*res://scripts/systems/QuestManager.gd"
-SaveManager="*res://scripts/systems/SaveManager.gd"
 
 [input]
 

@@ -1,0 +1,11 @@
+[gd_scene load_steps=2 format=3 uid="uid://d33uecfmlx7ik"]
+
+[ext_resource type="Script" path="res://scripts/ui/HUD.gd" id="1_lewtm"]
+
+[node name="HUD" type="CanvasLayer"]
+script = ExtResource("1_lewtm")
+
+[node name="HealthBar" type="ProgressBar" parent="."]
+unique_name_in_owner = true
+offset_right = 4.0
+offset_bottom = 27.0
