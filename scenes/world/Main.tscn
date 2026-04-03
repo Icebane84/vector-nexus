@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://testchamber"]
+[gd_scene load_steps=12 format=3 uid="uid://testchamber"]
 
 [ext_resource type="PackedScene" uid="uid://f6bqct7ms4rf" path="res://scenes/entities/Player.tscn" id="1_player"]
 [ext_resource type="Script" path="res://scripts/systems/vfx/VFXPool.gd" id="1_rs3dy"]
@@ -7,7 +7,14 @@
 [ext_resource type="Script" path="res://scripts/systems/CombatDirector.gd" id="3_x4b8t"]
 [ext_resource type="PackedScene" uid="uid://d33uecfmlx7ik" path="res://scenes/ui/HUD.tscn" id="5_8sfx7"]
 
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_eetp5"]
+
+[sub_resource type="Sky" id="Sky_ke30d"]
+sky_material = SubResource("ProceduralSkyMaterial_eetp5")
+
 [sub_resource type="Environment" id="Environment_7mq71"]
+background_mode = 2
+sky = SubResource("Sky_ke30d")
 
 [sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_1aw0u"]
 
@@ -20,17 +27,21 @@ environment = SubResource("Environment_7mq71")
 camera_attributes = SubResource("CameraAttributesPractical_1aw0u")
 compositor = SubResource("Compositor_ay14i")
 
+[node name="VFXPool" type="Node" parent="."]
+script = ExtResource("1_rs3dy")
+vfx_scene = ExtResource("2_ggebq")
+
 [node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
-transform = Transform3D(0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, -0.75, 0.433013, 0, 10, 0)
+transform = Transform3D(0.866025, 0.204962, 0.45606, 0, 0.91212, -0.409923, -0.5, 0.355004, 0.789919, 0, 10, 0)
 shadow_enabled = true
 
-[node name="ArenaFloor" type="CSGBox3D" parent="."]
+[node name="Floor" type="CSGBox3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 use_collision = true
 size = Vector3(20, 1, 20)
 
 [node name="Player" parent="." instance=ExtResource("1_player")]
-transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 4)
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 
 [node name="EnemyBase" parent="." instance=ExtResource("2_enemy")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -4)
@@ -39,7 +50,3 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -4)
 script = ExtResource("3_x4b8t")
 
 [node name="HUD" parent="." instance=ExtResource("5_8sfx7")]
-
-[node name="VFXPool" type="Node" parent="."]
-script = ExtResource("1_rs3dy")
-vfx_scene = ExtResource("2_ggebq")

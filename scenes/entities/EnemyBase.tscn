@@ -1,4 +1,4 @@
-[gd_scene load_steps=10 format=3 uid="uid://dk5dhiv0s2qot"]
+[gd_scene load_steps=11 format=3 uid="uid://dk5dhiv0s2qot"]
 
 [ext_resource type="Script" path="res://scripts/entities/enemies/EnemyBase.gd" id="1_EnemyBase"]
 [ext_resource type="Script" path="res://scripts/components/HealthComponent.gd" id="2_HealthComponent"]
@@ -10,7 +10,11 @@
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_enemy"]
 
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_6jej3"]
+albedo_color = Color(0.92549, 0.14902, 0.054902, 1)
+
 [sub_resource type="BoxMesh" id="BoxMesh_la7cj"]
+material = SubResource("StandardMaterial3D_6jej3")
 
 [node name="EnemyBase" type="CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp")]
 script = ExtResource("1_EnemyBase")

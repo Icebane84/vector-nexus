@@ -1,4 +1,4 @@
-[gd_scene load_steps=17 format=3 uid="uid://f6bqct7ms4rf"]
+[gd_scene load_steps=18 format=3 uid="uid://f6bqct7ms4rf"]
 
 [ext_resource type="Script" path="res://scripts/entities/player/Player.gd" id="1_Player"]
 [ext_resource type="PackedScene" uid="uid://cs5aum1t0hr5b" path="res://scripts/entities/enemies/bosses/animation_player.tscn" id="2_8u7dm"]
@@ -16,7 +16,11 @@
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
 
-[sub_resource type="CapsuleMesh" id="CapsuleMesh_t548n"]
+[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_gsbeq"]
+albedo_color = Color(0.128018, 0.312859, 0.636586, 1)
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_bl482"]
+material = SubResource("StandardMaterial3D_gsbeq")
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_jocyd"]
 
@@ -35,11 +39,12 @@ shape = SubResource("CapsuleShape3D_player")
 [node name="AnimationPlayer" parent="Visuals" instance=ExtResource("2_8u7dm")]
 
 [node name="MeshInstance3D" type="MeshInstance3D" parent="Visuals"]
-mesh = SubResource("CapsuleMesh_t548n")
+mesh = SubResource("CapsuleMesh_bl482")
 
 [node name="CameraPivot" type="SpringArm3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
 spring_length = 4.0
+margin = 0.5
 script = ExtResource("2_PlayerCamera")
 
 [node name="Camera3D" type="Camera3D" parent="CameraPivot"]
