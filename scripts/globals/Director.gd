@@ -10,7 +10,8 @@ var active_combat_system: Node
 var quest_system: Node
 var save_manager: Node
 
-var combat_scratchpad: Resource = Resource.new() 
+# Make sure AttackData.gd exists and has 'class_name AttackData' inside it!
+var combat_scratchpad: AttackData = AttackData.new()
 
 signal player_health_ready(node: HealthComponent)
 signal player_ready(player: Node)

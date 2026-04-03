@@ -2,6 +2,7 @@ extends Node
 class_name State
 enum ID { IDLE, MOVE, ATTACK, DODGE, PARRY, STAGGER, CHASE }
 @export var state_id: ID
+@warning_ignore("unused_signal")
 signal transitioned(to: ID)
 var actor: CharacterBody3D
 var anim: AnimationPlayer

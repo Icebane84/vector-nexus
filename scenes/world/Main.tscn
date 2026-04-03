@@ -1,7 +1,9 @@
-[gd_scene load_steps=6 format=3 uid="uid://testchamber"]
+[gd_scene load_steps=9 format=3 uid="uid://testchamber"]
 
 [ext_resource type="PackedScene" uid="uid://f6bqct7ms4rf" path="res://scenes/entities/Player.tscn" id="1_player"]
+[ext_resource type="Script" path="res://scripts/systems/vfx/VFXPool.gd" id="1_rs3dy"]
 [ext_resource type="PackedScene" uid="uid://dk5dhiv0s2qot" path="res://scenes/entities/EnemyBase.tscn" id="2_enemy"]
+[ext_resource type="PackedScene" uid="uid://vfxinstance" path="res://scenes/world/VFXInstance.tscn" id="2_ggebq"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 
@@ -14,7 +16,11 @@ sky = SubResource("Sky_env")
 tonemap_mode = 2
 glow_enabled = true
 
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_p8mu8"]
+
 [node name="Main" type="Node3D"]
+script = ExtResource("1_rs3dy")
+vfx_scene = ExtResource("2_ggebq")
 
 [node name="WorldEnvironment" type="WorldEnvironment" parent="."]
 environment = SubResource("Environment_main")
@@ -28,8 +34,9 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -0.5, 0)
 use_collision = true
 size = Vector3(20, 1, 20)
 
-[node name="Player" parent="." instance=ExtResource("1_player")]
+[node name="Player" parent="." node_paths=PackedStringArray("camera") instance=ExtResource("1_player")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, 4)
+camera = NodePath("../PlayerCamera")
 
 [node name="EnemyBase" parent="." instance=ExtResource("2_enemy")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -4)
@@ -37,3 +44,10 @@ transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 0, -4)
 [node name="Camera3D" type="Camera3D" parent="."]
 transform = Transform3D(1, 0, 0, 0, 0.866025, 0.5, 0, -0.5, 0.866025, 0, 6, 9)
 current = true
+
+[node name="PlayerCamera" type="SpringArm3D" parent="."]
+shape = SubResource("CapsuleShape3D_p8mu8")
+
+[node name="VFXPool" type="Node3D" parent="."]
+script = ExtResource("1_rs3dy")
+vfx_scene = ExtResource("2_ggebq")
