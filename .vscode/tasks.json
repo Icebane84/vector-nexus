@@ -1,0 +1,37 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "PHOENIX: Full Sanctification",
+            "type": "shell",
+            "command": "python tools/python/agent/sync_blackboard.py && python tools/python/agent/tscn_analyzer.py && python tools/python/agent/governance_guard.py",
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "presentation": {
+                "reveal": "always",
+                "panel": "new"
+            },
+            "problemMatcher": []
+        },
+        {
+            "label": "PHOENIX: Governance Audit",
+            "type": "shell",
+            "command": "python tools/python/agent/governance_guard.py",
+            "problemMatcher": []
+        },
+        {
+            "label": "PHOENIX: Visual Cortex Scan",
+            "type": "shell",
+            "command": "python tools/python/agent/tscn_analyzer.py",
+            "problemMatcher": []
+        },
+        {
+            "label": "PHOENIX: Lore Master Sync",
+            "type": "shell",
+            "command": "python tools/python/agent/sync_blackboard.py",
+            "problemMatcher": []
+        }
+    ]
+}

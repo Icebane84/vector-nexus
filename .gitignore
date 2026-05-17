@@ -1,6 +1,7 @@
 # Godot-specific ignores
 .godot/
 *.tmp
+C:\Users\Chris\Ashen Oath\.agent\godot-docs-master
 
 # Export-related ignores
 android/
@@ -12,3 +13,6 @@ export_presets.cfg
 .mono/
 data_*/
 mono_crash.*.json
+
+# Large documentation files
+.docs/

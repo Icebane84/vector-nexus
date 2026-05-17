@@ -1,0 +1,41 @@
+[gd_scene format=3 uid="uid://baj31371p51ir"]
+
+[ext_resource type="PackedScene" uid="uid://bvripcf01ii3v" path="res://scenes/entities/Kaelen.tscn" id="1_kaelen"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+ground_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
+
+[sub_resource type="Sky" id="Sky_env"]
+sky_material = SubResource("ProceduralSkyMaterial_sky")
+
+[sub_resource type="Environment" id="Environment_world"]
+background_mode = 2
+sky = SubResource("Sky_env")
+tonemap_mode = 2
+
+[sub_resource type="PlaneMesh" id="PlaneMesh_floor"]
+size = Vector2(50, 50)
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
+size = Vector3(50, 0.1, 50)
+
+[node name="TestArena" type="Node3D" unique_id=1861179714]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=927898641]
+environment = SubResource("Environment_world")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=2012489421]
+transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75, -0.433013, 0, 5, 0)
+shadow_enabled = true
+
+[node name="Floor" type="StaticBody3D" parent="." unique_id=1410322968]
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="Floor" unique_id=518436151]
+mesh = SubResource("PlaneMesh_floor")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="Floor" unique_id=70752576]
+shape = SubResource("BoxShape3D_floor")
+
+[node name="Kaelen" parent="." unique_id=229320982 instance=ExtResource("1_kaelen")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)

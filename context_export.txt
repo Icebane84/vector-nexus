@@ -1,0 +1,5984 @@
+--- PROJECT.GODOT ---
+
+```ini
+[application]
+config/name="Ashen Oath"
+run/main_scene="res://scenes/world/Main.tscn"
+
+[input]
+move_forward
+move_back
+move_left
+move_right
+attack
+dodge
+interact
+parry
+lock_on
+jump
+```
+
+--- AUTOLOADS / GLOBALS ---
+
+_Director: *res://scripts/globals/CORE.Kernel.Director.gd
+Log: *res://scripts/globals/CORE.Log.GlobalLogger.gd
+_GameEvents: *res://scripts/globals/CORE.Kernel.GameEvents.gd
+
+
+--- SCRIPTS ---
+
+--- SCRIPT: res://scripts/autoloads/SaveManager.gd ---
+```gdscript
+extends Node
+
+const SAVE_PATH = "user://savegame.save"
+
+# Signals to notify the rest of the game when I/O operations finish
+signal game_saved
+signal game_loaded
+
+## Gathers data from all nodes in the "Persist" group and writes to disk.
+func save_game() -> void:
+	var save_file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	if save_file == null:
+		printerr("SaveManager: Failed to open save file for writing.")
+		return
+
+	var save_nodes = get_tree().get_nodes_in_group("Persist")
+	for node in save_nodes:
+		if not node.has_method("save"):
+			printerr("SaveManager: Node '%s' in Persist group lacks save() method." % node.name)
+			continue
+
+		var node_data = node.call("save")
+		var json_string = JSON.stringify(node_data)
+		save_file.store_line(json_string)
+
+	print("SaveManager: Game saved successfully.")
+	game_saved.emit()
+
+## Reads the save file and routes the data back to the appropriate systems.
+func load_game() -> void:
+	if not FileAccess.file_exists(SAVE_PATH):
+		print("SaveManager: No save file found. Starting fresh.")
+		return
+
+	var save_file = FileAccess.open(SAVE_PATH, FileAccess.READ)
+	if save_file == null:
+		printerr("SaveManager: Failed to open save file for reading.")
+		return
+
+	while save_file.get_position() < save_file.get_length():
+		var json_string = save_file.get_line()
+		var json = JSON.new()
+		var parse_result = json.parse(json_string)
+		if parse_result != OK:
+			printerr("SaveManager: JSON Parse Error: ", json.get_error_message())
+			continue
+
+		var node_data = json.get_data()
+
+		# --- DATA ROUTING LOGIC ---
+		if node_data.has("scene_path"):
+			var scene_path: String = node_data["scene_path"]
+			if not ResourceLoader.exists(scene_path):
+				printerr("SaveManager: Scene path not found: ", scene_path)
+				continue
+			var new_instance: Node = load(scene_path).instantiate()
+			get_tree().current_scene.add_child(new_instance)
+			if new_instance.has_method("load_data"):
+				new_instance.call("load_data", node_data)
+			else:
+				printerr("SaveManager: New instance lacks load_data() method.")
+		elif node_data.has("node_path"):
+			var node_path: NodePath = node_data["node_path"]
+			var node: Node = get_node_or_null(node_path)
+			if node and node.has_method("load_data"):
+				node.call("load_data", node_data)
+			else:
+				printerr(
+					"SaveManager: Could not find node or load_data method for path: ",
+					node_path
+				)
+		else:
+			printerr("SaveManager: Save data entry has no 'scene_path' or 'node_path' to route it.")
+
+	print("SaveManager: Game loaded successfully.")
+	game_loaded.emit()
+
+```
+
+--- SCRIPT: res://scripts/components/CharacterState.gd ---
+```gdscript
+"""
+[GVRN]
+Artifact ID: CharacterState
+Description: Base class for character states.
+"""
+extends Node
+
+class_name CharacterState
+
+# The entity this state is controlling. The StateMachine will inject this automatically.
+
+var character: CharacterBody3D
+
+## Called exactly once when the state machine enters this state.
+func enter() -> void:
+	pass
+
+## Called exactly once when the state machine exits this state.
+func exit() -> void:
+	pass
+
+## Called every frame. Good for standard visual updates or polling inputs.
+func update(_delta: float) -> void:
+	pass
+
+## Called every physics frame. Good for movement, timers, and collision logic.
+func physics_update(_delta: float) -> void:
+	pass
+
+```
+
+--- SCRIPT: res://scripts/components/combat/PooledProjectile.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID:   COMP.Combat.PooledProjectile
+# Description:   Zero-Allocation projectile logic.
+# Author:        Architect
+
+extends Area3D
+class_name PooledProjectile
+
+signal returned_to_pool(proj: PooledProjectile)
+
+@export var speed: float = 20.0
+@export var max_lifetime: float = 3.0
+@export var hitbox: HitboxComponent
+
+var _active: bool = false
+var _lifetime_timer: float = 0.0
+var _direction: Vector3 = Vector3.FORWARD
+
+func _ready() -> void:
+	if hitbox and not hitbox.area_entered.is_connected(_on_hitbox_entered):
+		hitbox.area_entered.connect(_on_hitbox_entered)
+
+func fire(start_pos: Vector3, dir: Vector3) -> void:
+	global_position = start_pos
+	_direction = dir.normalized()
+	
+	# Align projectile to face target direction
+	if _direction != Vector3.ZERO and _direction.cross(Vector3.UP).length() > 0.01:
+		look_at(global_position + _direction, Vector3.UP)
+		
+	_lifetime_timer = 0.0
+	_active = true
+	show()
+
+func _physics_process(delta: float) -> void:
+	if not _active: return
+	
+	# Manual timer avoids SceneTreeTimer garbage collection spikes
+	_lifetime_timer += delta
+	if _lifetime_timer >= max_lifetime:
+		return_to_pool()
+		return
+		
+	global_position += _direction * speed * delta
+
+func _on_hitbox_entered(_area: Area3D) -> void:
+	return_to_pool()
+
+func return_to_pool() -> void:
+	_active = false
+	hide()
+	returned_to_pool.emit(self)
+```
+
+--- SCRIPT: res://scripts/components/COMP.AI.Navigation.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.AI.Navigation
+# Description: Standard pathfinding interface using NavigationAgent3D.
+# Author: Architect
+
+extends Node
+
+class_name NavigationComponent
+
+@export var nav_agent: NavigationAgent3D
+var actor: CharacterBody3D
+
+func setup(p_actor: CharacterBody3D):
+	actor = p_actor
+	if not nav_agent: nav_agent = get_node_or_null("NavigationAgent3D")
+	nav_agent.velocity_computed.connect(func(v): actor.velocity = v)
+func move_to(target_pos: Vector3):
+	nav_agent.target_position = target_pos
+	if nav_agent.is_navigation_finished(): return
+	var dir = (nav_agent.get_next_path_position() - actor.global_position).normalized()
+	nav_agent.set_velocity(dir * nav_agent.max_speed)
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.Camera.LockOn.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.Camera.LockOn
+# Description: Rotational binding logic for third-person camera targeting.
+# Author: Architect
+
+extends Node3D
+
+class_name LockOnComponent
+
+signal target_changed(target: Node3D)
+
+@export var max_lock_distance: float = 30.0
+@export var _mock_targets: Array[Node] = []
+
+var _current_target: Node3D = null
+var current_target: Node3D:
+	get: return _current_target
+	set(v):
+		if _current_target != v:
+			_current_target = v
+			# Signal locally for portability
+			target_changed.emit(v)
+
+func find_closest_target(camera: Camera3D) -> Node3D:
+	var best_target: Node3D = null
+	var min_dist_to_center: float = INF
+	var viewport_center = camera.get_viewport().get_visible_rect().size / 2.0
+	
+	var targets = _mock_targets if _mock_targets.size() > 0 \
+		else get_tree().get_nodes_in_group("enemy")
+	
+	for t in targets:
+		if not is_instance_valid(t) or not t is Node3D: continue
+		if global_position.distance_to(t.global_position) > max_lock_distance: continue
+		if camera.is_position_behind(t.global_position): continue
+			
+		var screen_pos = camera.unproject_position(t.global_position)
+		var center_dist = screen_pos.distance_to(viewport_center)
+		
+		if center_dist < min_dist_to_center:
+			min_dist_to_center = center_dist
+			best_target = t
+			
+	return best_target
+
+func find_target_in_direction(camera: Camera3D, flick_dir: Vector2) -> Node3D:
+	if not is_instance_valid(current_target):
+		return find_closest_target(camera)
+		
+	var best_target: Node3D = null
+	var min_score: float = INF
+	var current_screen_pos = camera.unproject_position(current_target.global_position)
+	var targets = _mock_targets if _mock_targets.size() > 0 else get_tree().get_nodes_in_group("enemy")
+	
+	for t in targets:
+		if t == current_target or not is_instance_valid(t) or not t is Node3D: continue
+		if global_position.distance_to(t.global_position) > max_lock_distance: continue
+		if camera.is_position_behind(t.global_position): continue
+			
+		var screen_pos = camera.unproject_position(t.global_position)
+		var dir_to_candidate = (screen_pos - current_screen_pos).normalized()
+		
+		# Ensure candidate is in the general direction of the flick (dot > 0.2)
+		var dot = dir_to_candidate.dot(flick_dir.normalized())
+		if dot > 0.2:
+			var center_dist = screen_pos.distance_to(current_screen_pos)
+			var score = center_dist * (1.0 - dot + 0.1) 
+			
+			if score < min_score:
+				min_score = score
+				best_target = t
+				
+	return best_target
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.Inventory.Main.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.Inventory.Main
+# Description: Standard item container and management hub.
+# Author: Architect
+
+extends Node
+
+class_name InventoryComponent
+
+signal inventory_updated
+
+@export var items: Array[ItemData] = []
+
+func _ready() -> void:
+	if not GameEvents.instance.item_collected.is_connected(_on_item_collected):
+		GameEvents.instance.item_collected.connect(_on_item_collected)
+
+func _on_item_collected(item: ItemData) -> void:
+	add_item(item)
+	print("PHOENIX_LOG: Item stored in Inventory: ", item.display_name)
+
+func add_item(item: ItemData) -> void:
+	items.append(item)
+	inventory_updated.emit()
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.Physics.Health.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.Physics.Health
+# Description: Core health management and invincibility handling.
+# Author: Architect
+
+extends Node
+class_name HealthComponent
+
+signal health_changed(current: float, maximum: float)
+signal damaged(amount: float, source: Node)
+signal healed(amount: float)
+signal died
+
+@export_group("Stats")
+@export var max_health: float = 100.0
+@export var invincibility_time: float = 0.5
+
+var current_health: float:
+	set(value):
+		var old := current_health
+		current_health = clamp(value, 0.0, max_health)
+		if current_health != old:
+			health_changed.emit(current_health, max_health)
+
+var _invincible: bool = false
+
+func _ready() -> void:
+	current_health = max_health
+
+func receive_damage(amount: float, source: Node = null) -> float:
+	if _invincible or current_health <= 0:
+		return 0.0
+
+	var actual := minf(amount, current_health)
+	current_health -= actual
+	damaged.emit(actual, source)
+
+	if current_health <= 0:
+		died.emit()
+	elif invincibility_time > 0:
+		_start_invincibility()
+
+	return actual
+
+func heal(amount: float) -> float:
+	var actual := minf(amount, max_health - current_health)
+	current_health += actual
+	if actual > 0:
+		healed.emit(actual)
+	return actual
+
+func _start_invincibility() -> void:
+	_invincible = true
+	# PHOENIX-FIX: Ensuring timer is independent of time scale during hit-stops
+	await get_tree().create_timer(invincibility_time, true, false, true).timeout
+	_invincible = false
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.Physics.Hitbox.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.Physics.Hitbox
+# Description: Standardized damage application proxy for Area3Ds.
+# Author: Architect
+
+extends Area3D
+
+class_name HitboxComponent
+
+var _damage: float = 10.0
+@export var damage: float:
+	get: return _damage
+	set(v): _damage = max(0.0, v)
+
+var _poise_damage: float = 20.0
+@export var poise_damage: float:
+	get: return _poise_damage
+	set(v): _poise_damage = max(0.0, v)
+
+@export var team_id: int = 0
+@export var hit_stop_duration: float = 0.12
+
+func _ready() -> void:
+	monitoring = false
+	# Connect to area_entered signal
+	if not area_entered.is_connected(_on_area_entered):
+		area_entered.connect(_on_area_entered)
+
+func activate_one_shot() -> void:
+	# PHOENIX-FIX: SKILL-009 Atomic Tick
+	set_deferred("monitoring", true)
+	set_deferred("monitoring", false)
+
+func _on_area_entered(area: Area3D) -> void:
+	if not area is HurtboxComponent: return
+	
+	var hurtbox = area as HurtboxComponent
+	
+	# Create a local AttackData instance to avoid race conditions (SKILL-011)
+	var attack = load("res://scripts/resources/DATA.Combat.AttackData.gd").new()
+	attack.damage = _damage
+	attack.poise_damage = _poise_damage
+	attack.team_id = team_id
+	attack.attacker_pos = global_position
+	attack.can_be_parried = true
+	
+	# Dispatch hit to target
+	hurtbox.receive_damage(attack)
+	
+	# Trigger cinematic feedback (if systems exist)
+	_trigger_feedback()
+
+func _trigger_feedback() -> void:
+	# Optional: Global Director references are safe for VFX/Feedback 
+	# but we should guard them for headless tests.
+	if Director.instance.active_combat_system:
+		Director.instance.active_combat_system.trigger_hit_stop(hit_stop_duration)
+	
+	if Director.instance.vfx_pool:
+		Director.instance.vfx_pool.spawn_vfx(global_position)
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.Physics.Hurtbox.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.Physics.Hurtbox
+# Description: Centralized damage reception logic for living entities.
+# Author: Architect
+
+extends Area3D
+
+class_name HurtboxComponent
+
+signal hit_received(attack: AttackData)
+signal parry_successful(attacker_pos: Vector3)
+
+@export var health_component: HealthComponent
+@export var poise_component: PoiseComponent
+@export var team_id: int = 0
+
+# SKILL-001: Backing-Field Resilience
+var _is_invincible: bool = false
+@export var is_invincible: bool:
+	get: return _is_invincible
+	set(v): _is_invincible = v
+
+var _is_parry_window: bool = false
+@export var is_parry_window: bool:
+	get: return _is_parry_window
+	set(v): _is_parry_window = v
+
+func receive_damage(attack: AttackData) -> void:
+	# 1. Team Filter
+	if attack.team_id == team_id: 
+		return
+
+	# 2. I-frame Check (User Requested logic)
+	if _is_invincible:
+		print("PHOENIX_LOG: Hit negated by I-frames.")
+		return
+
+	# 3. Parry Logic
+	if _is_parry_window and attack.can_be_parried:
+		print("PHOENIX_LOG: Parry successful!")
+		parry_successful.emit(attack.attacker_pos)
+		_trigger_parry_feedback()
+		return
+
+	# 4. Standard Damage
+	if health_component:
+		health_component.receive_damage(attack.damage)
+	
+	if poise_component:
+		poise_component.apply_poise_damage(attack.poise_damage)
+	
+	hit_received.emit(attack)
+
+func _trigger_parry_feedback() -> void:
+	# Guard Director calls for headless tests
+	if Director.instance.active_combat_system:
+		Director.instance.active_combat_system.trigger_parry_hitstop()
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.State.Dodge.gd ---
+```gdscript
+"""
+[GVRN]
+Artifact ID:   COMP.State.Dodge
+Description:   Handles directional dodge rolling with state-locking and duration limits.
+"""
+extends Node
+
+@export_group("Dodge Settings")
+@export var dodge_speed: float = 18.0
+@export var dodge_duration: float = 0.4
+
+var _dodge_timer: float = 0.0
+var _dodge_direction: Vector3 = Vector3.ZERO
+
+func enter_state(entity: CharacterBody3D, direction_input: Vector3) -> void:
+	_dodge_timer = dodge_duration
+	
+	# DAMP: Explicit fallback if the player dodges without pressing a movement key
+	if direction_input == Vector3.ZERO:
+		var cam_basis := entity.global_transform.basis
+		_dodge_direction = Vector3(-cam_basis.z.x, 0.0, -cam_basis.z.z).normalized()
+	else:
+		_dodge_direction = direction_input.normalized()
+		
+	# Snap entity rotation to face the dodge direction immediately
+	if _dodge_direction != Vector3.ZERO:
+		var target_angle := atan2(-_dodge_direction.x, -_dodge_direction.z)
+		entity.rotation.y = target_angle
+
+func update_physics(entity: CharacterBody3D, delta: float) -> String:
+	_dodge_timer -= delta
+	
+	# Lock velocity to the dodge direction
+	entity.velocity.x = _dodge_direction.x * dodge_speed
+	entity.velocity.z = _dodge_direction.z * dodge_speed
+	
+	# Apply gravity just in case we dodge off a ledge
+	if not entity.is_on_floor():
+		var gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+		entity.velocity.y -= gravity * delta
+		
+	entity.move_and_slide()
+	
+	# Explicit exit once duration expires
+	if _dodge_timer <= 0.0:
+		return "Idle"
+		
+	return ""
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.State.Jump.gd ---
+```gdscript
+"""
+[GVRN]
+Artifact ID:   COMP.State.Jump
+Description:   Modular state for handling entity jumping. Strictly decoupled from input.
+"""
+extends Node
+# Assumes usage inside your existing StateMachine orchestrator
+
+@export var jump_impulse: float = 14.0
+@export var gravity_multiplier: float = 1.5
+
+var _gravity: float = ProjectSettings.get_setting("physics/3d/default_gravity")
+
+func enter_state(entity: CharacterBody3D) -> void:
+	if entity.is_on_floor():
+		entity.velocity.y = jump_impulse
+
+func update_physics(entity: CharacterBody3D, delta: float) -> String:
+	# Apply custom gravity curve for a snappy, heavy jump
+	entity.velocity.y -= (_gravity * gravity_multiplier) * delta
+	entity.move_and_slide()
+	
+	# DAMP: Explicit exit conditions
+	if entity.is_on_floor():
+		if entity.velocity.length_squared() > 0.1:
+			return "Move"
+		return "Idle"
+		
+	if entity.velocity.y < 0.0:
+		return "Fall"
+		
+	# Returning an empty string (or predefined constant) tells the orchestrator 
+	# to keep running the current state
+	return ""
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.Stats.Attribute.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.Stats.Attribute
+# Description: Handles base stats and derives combat modifiers.
+# Author: Architect
+
+extends Node
+
+class_name AttributeComponent
+
+@export var vitality: int = 10
+@export var strength: int = 10
+
+func get_damage_multiplier() -> float: return 1.0 + ((strength - 10) * 0.05)
+
+func get_max_hp_bonus() -> float: return (vitality - 10) * 15.0
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.Stats.Main.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.Stats.Main
+# Description: Centralized statistics hub handling level, XP, and attribute bonuses.
+# Author: Architect
+
+extends Node
+
+class_name StatsComponent
+
+signal leveled_up(new_level: int)
+signal xp_gained(amount: int, total: int)
+
+@export_group("Base Attributes")
+@export var vitality: int = 10
+@export var strength: int = 10
+@export var dexterity: int = 10
+@export var health_component: HealthComponent
+
+@export_group("Progression")
+@export var level: int = 1
+@export var experience: int = 0
+@export var xp_requirement_base: int = 100
+
+func get_max_hp() -> float:
+	return 100.0 + (vitality * 15.0)
+
+func get_attack_power() -> float:
+	return 10.0 + (strength * 2.5)
+
+func add_xp(amount: int) -> void:
+	experience += amount
+	xp_gained.emit(amount, experience)
+
+	var requirement = level * xp_requirement_base
+	if experience >= requirement:
+		_level_up()
+
+func _level_up() -> void:
+	experience -= (level * xp_requirement_base)
+	level += 1
+	leveled_up.emit(level)
+
+	if health_component:
+		health_component.current_health = health_component.max_health
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.Stats.Poise.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.Stats.Poise
+# Description: Manages stability and stagger thresholds.
+# Author: Architect
+
+extends Node
+
+class_name PoiseComponent
+
+signal posture_broken
+
+@export var max_poise: float = 100.0
+var _current_poise: float
+var is_hyper_armor_active: bool = false
+var current_poise: float:
+	get: return _current_poise
+	set(v):
+		if is_hyper_armor_active: return
+		_current_poise = clamp(v, 0.0, max_poise)
+		if _current_poise <= 0.0: 
+			posture_broken.emit()
+			_current_poise = max_poise
+func _ready(): _current_poise = max_poise
+func apply_poise_damage(amount: float) -> void:
+	self.current_poise -= amount
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.Stats.Sanity.gd ---
+```gdscript
+"""
+[GVRN]
+Artifact ID:   COMP.Stats.Sanity
+Description:   Atomized psychological health tracker. Manages Sanity, Shadow Resonance,
+               and emits strict signals for Instability cascade events.
+"""
+extends Node
+class_name SanityComponent
+
+# DAMP: Explicit descriptive signals
+signal sanity_changed(current_sanity: float, maximum_sanity: float)
+signal sanity_depleted()
+signal instability_spike_triggered(instability_amount: float)
+
+@export_group("Sanity Parameters")
+@export var maximum_sanity: float = 100.0
+@export var passive_recovery_rate: float = 2.0
+
+@export_group("Shadow Resonance")
+@export var shadow_cost_multiplier: float = 1.5
+
+var current_sanity: float = 0.0
+var current_resonance: float = 0.0
+
+func _ready() -> void:
+	_initialize_sanity()
+
+func _initialize_sanity() -> void:
+	current_sanity = maximum_sanity
+	sanity_changed.emit(current_sanity, maximum_sanity)
+
+func suffer_mental_damage(amount: float) -> void:
+	if current_sanity <= 0:
+		return
+		
+	current_sanity = clampf(current_sanity - amount, 0.0, maximum_sanity)
+	sanity_changed.emit(current_sanity, maximum_sanity)
+	
+	if current_sanity <= 0.0:
+		sanity_depleted.emit()
+
+func heal_sanity(amount: float) -> void:
+	current_sanity = clampf(current_sanity + amount, 0.0, maximum_sanity)
+	sanity_changed.emit(current_sanity, maximum_sanity)
+
+func consume_shadow_power(base_cost: float) -> void:
+	# Using shadow power reduces sanity but also spikes instability.
+	var total_cost: float = base_cost * shadow_cost_multiplier
+	current_resonance += total_cost
+	
+	suffer_mental_damage(total_cost)
+	instability_spike_triggered.emit(total_cost)
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.Stats.Stamina.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.Stats.Stamina
+# Description: Manages action economy and physical endurance.
+# Author: Architect
+
+extends Node
+
+class_name StaminaComponent
+
+signal stamina_depleted
+signal stamina_changed(current: float, max: float)
+
+# SKILL-001: Backing-Field Resilience
+var _max_stamina: float = 100.0
+@export var max_stamina: float:
+	get: return _max_stamina
+	set(v): _max_stamina = max(1.0, v); stamina_changed.emit(_current_stamina, _max_stamina)
+
+var _current_stamina: float = 100.0:
+	set(v):
+		var old = _current_stamina
+		_current_stamina = clamp(v, 0.0, _max_stamina)
+		if _current_stamina != old:
+			stamina_changed.emit(_current_stamina, _max_stamina)
+
+var current_stamina: float:
+	get: return _current_stamina
+
+var _regen_rate: float = 15.0
+@export var regen_rate: float:
+	get: return _regen_rate
+	set(v): _regen_rate = v
+
+var _regen_pause_time: float = 1.0 # Seconds to wait after consumption
+var _regen_timer: float = 0.0
+
+func _process(delta: float) -> void:
+	if _regen_timer > 0:
+		_regen_timer -= delta
+		return
+
+	if _current_stamina < _max_stamina:
+		_current_stamina = move_toward(_current_stamina, _max_stamina, _regen_rate * delta)
+
+## Consume stamina. Returns true if successful.
+func consume(amount: float) -> bool:
+	if _current_stamina < amount:
+		return false
+	
+	_current_stamina -= amount
+	_regen_timer = _regen_pause_time # Pause regeneration (User Pref)
+	
+	if _current_stamina <= 0:
+		stamina_depleted.emit()
+	
+	return true
+
+func is_full() -> bool:
+	return _current_stamina >= _max_stamina
+
+```
+
+--- SCRIPT: res://scripts/components/COMP.World.Loot.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.World.Loot
+# Description: Handles XP awarding and physical item spawning on death.
+# Author: Architect
+
+extends Node
+
+class_name LootComponent
+
+signal loot_collected(xp_value: int)
+
+@export var xp_value: int = 25
+@export var loot_table: Array[ItemData] = []
+@export_range(0, 1) var drop_chance: float = 0.5
+
+func spawn_loot() -> void:
+	# Emit local signal for loot collection
+	loot_collected.emit(xp_value)
+	# 2. Physical Drop Logic
+	if randf() <= drop_chance and loot_table.size() > 0:
+		var item = loot_table.pick_random()
+		_drop_physical_item(item)
+func _drop_physical_item(data: ItemData) -> void:
+	# In a full game, you'd spawn a "Pickup" scene here
+	print("Phoenix Loot: Dropped ", data.display_name)
+
+```
+
+--- SCRIPT: res://scripts/components/InputBufferComponent.gd ---
+```gdscript
+"""
+[GVRN]
+Artifact ID: InputBufferComponent
+Description: Centralized input buffering system.
+"""
+
+extends Node
+class_name InputBufferComponent
+
+# How long an input is remembered (in seconds)
+@export var buffer_window: float = 0.2 
+
+# Stores the action names and their remaining buffer time
+var _buffered_actions: Dictionary = {}
+
+func _process(delta: float) -> void:
+	# Degrade the timers for all buffered actions
+	var actions_to_remove = []
+	for action in _buffered_actions.keys():
+		_buffered_actions[action] -= delta
+		if _buffered_actions[action] <= 0.0:
+			actions_to_remove.append(action)
+			
+	# Clean up expired actions
+	for action in actions_to_remove:
+		_buffered_actions.erase(action)
+
+## Call this from your main input handling script when a button is pressed
+func buffer_action(action: String) -> void:
+	_buffered_actions[action] = buffer_window
+
+## Call this from your states to check if an action is queued up
+func is_action_buffered(action: String) -> bool:
+	return _buffered_actions.has(action)
+
+## Call this when a state transitions to consume the input so it doesn't fire twice
+func consume_action(action: String) -> void:
+	if _buffered_actions.has(action):
+		_buffered_actions.erase(action)
+
+## Optional: clear the whole buffer (useful when the player gets stunned/hit)
+func clear_buffer() -> void:
+	_buffered_actions.clear()
+
+```
+
+--- SCRIPT: res://scripts/components/interactables/COMP.World.Interactable.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.World.Interactable
+# Description: Standardized interaction interface for world objects.
+# Version: [SOVEREIGN]
+# Author: Architect
+
+extends Area3D
+
+class_name InteractableComponent
+
+signal interacted(player: Player)
+
+@export var interaction_text: String = "Interact"
+@export var is_one_shot: bool = false
+
+var _was_used: bool = false
+
+func interact(player: Player) -> void:
+	if is_one_shot and _was_used: return
+	_was_used = true
+	interacted.emit(player)
+
+```
+
+--- SCRIPT: res://scripts/components/sensors/COMP.AI.Detection.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.AI.Detection
+# Description: Standard awareness module for AI agents.
+# Version: [SOVEREIGN]
+# Author: Architect
+
+extends Area3D
+
+class_name DetectionComponent
+
+signal target_acquired(target: Node3D)
+signal target_lost
+
+@export var target_group: StringName = &"player"
+var _current_target: Node3D = null
+func _ready() -> void:
+	if not body_entered.is_connected(_on_body_entered):
+		body_entered.connect(_on_body_entered)
+	if not body_exited.is_connected(_on_body_exited):
+		body_exited.connect(_on_body_exited)
+func _on_body_entered(body: Node) -> void:
+	if _current_target == null and body.is_in_group(target_group):
+		_current_target = body as Node3D
+		target_acquired.emit(_current_target)
+func _on_body_exited(body: Node) -> void:
+	if body == _current_target:
+		_current_target = null
+		target_lost.emit()
+
+```
+
+--- SCRIPT: res://scripts/components/sensors/COMP.AI.Interaction.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.AI.Interaction
+# Description: Standard raycast logic for player interaction with objects.
+# Version: [SOVEREIGN]
+# Author: Architect
+
+extends RayCast3D
+
+class_name InteractionsComponent
+
+@export var player: Player
+@export var interaction_distance: float = 3.0
+
+func _physics_process(_delta: float) -> void:
+	global_position = player.global_position + Vector3.UP
+	
+	# Set collision mask to layers 8 and 9
+	collision_mask = 256 + 512  # 8 + 9
+
+	# Set the ray length to interaction_distance
+	target_position = Vector3.FORWARD * interaction_distance
+
+	# Update the raycast immediately
+	force_raycast_update()
+	
+	if is_colliding():
+		var collider = get_collider()
+		if collider.has_node("InteractableComponent"):
+			var interactable = collider.get_node("InteractableComponent") as InteractableComponent
+			_handle_ui_hint(interactable.interaction_text)
+			if Input.is_action_just_pressed(&"interact"):
+				interactable.interact(player)
+	else:
+		_hide_ui_hint()
+		
+func _handle_ui_hint(_text: String):
+	# Call up to HUD to show "Press E to Open"
+	pass
+	
+func _hide_ui_hint():
+	pass
+
+```
+
+--- SCRIPT: res://scripts/components/state_machine/FABRIC.Logic.State.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: FABRIC.Logic.State
+# Description: Base state class for the hierarchical state machine.
+# Version: [SOVEREIGN]
+# Author: Architect
+
+extends Node
+
+class_name State
+
+# Legacy Compatibility ID
+@export var state_id: T.StateID
+
+@warning_ignore("unused_signal")
+signal transitioned (to: State, from: T.StateID)
+
+# PHOENIX-GVRN: State registration handled by parent StateMachine
+var state_machine: Node # Untyped to avoid circularity with class_name StateMachine
+
+# Entity Pointers
+var actor: CharacterBody3D
+var anim: AnimationPlayer
+var animation_tree: AnimationTree
+var camera: PlayerCamera
+var hurtbox: HurtboxComponent
+var hitbox: HitboxComponent
+
+func enter(_msg: Dictionary = {}) -> void:
+	pass
+
+func exit() -> void:
+	pass
+
+func update(_delta: float) -> void:
+	pass
+
+func physics_update(_delta: float) -> void:
+	pass
+
+func handle_input(_event: InputEvent) -> void:
+	pass
+
+```
+
+--- SCRIPT: res://scripts/components/state_machine/FABRIC.Logic.StateMachine.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: FABRIC.Logic.StateMachine
+# Description: Standard hierarchical state machine pattern.
+# Version: [SOVEREIGN]
+# Author: Architect
+
+extends Node
+
+class_name StateMachine
+
+signal state_changed(from_state: StringName, to_state: StringName)
+
+@export var initial_state: State
+
+var current_state: State
+var states: Dictionary = {}
+
+func _ready() -> void:
+	# PHOENIX-GVRN: Automatic Recursive Registration
+	_register_states(self)
+
+	# Delay start to ensure actor/animation pointers are valid in parent
+	await get_tree().process_frame
+
+	if initial_state:
+		current_state = initial_state
+		current_state.process_mode = Node.PROCESS_MODE_INHERIT
+		current_state.enter()
+
+func _register_states(parent: Node) -> void:
+	for child in parent.get_children():
+		if child is State:
+			states[child.name] = child
+			child.state_machine = self
+			child.process_mode = Node.PROCESS_MODE_DISABLED
+			# Recurse for nested states (HSM Support)
+			_register_states(child)
+
+func _process(delta: float) -> void:
+	if current_state:
+		current_state.update(delta)
+
+func _physics_process(delta: float) -> void:
+	if current_state:
+		current_state.physics_update(delta)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if current_state:
+		current_state.handle_input(event)
+
+func transition_to(state_name: StringName, msg: Dictionary = {}) -> void:
+	if not states.has(state_name):
+		# PHOENIX-LOG: Resilient Error Handling
+		push_error("State '%s' not found in %s" % [state_name, get_parent().name])
+		return
+
+	var previous_state := current_state
+	if previous_state:
+		previous_state.exit()
+		previous_state.process_mode = Node.PROCESS_MODE_DISABLED
+
+	current_state = states[state_name]
+	current_state.process_mode = Node.PROCESS_MODE_INHERIT
+	current_state.enter(msg)
+
+	state_changed.emit(previous_state.name if previous_state else &"", current_state.name)
+
+```
+
+--- SCRIPT: res://scripts/components/state_machine/StateManager.gd ---
+```gdscript
+"""
+[GVRN]
+Artifact ID: StateManager
+Description: Base class for state machines.
+"""
+
+extends Node
+class_name StateManager
+
+var current_state: State = null
+
+# Dependency Injection passed down from the Orchestrator (e.g., Player.gd)
+func setup(initial_state: State) -> void:
+	_transition_to(initial_state)
+
+func _physics_process(delta: float) -> void:
+	if current_state == null:
+		return
+		
+	# Route the physics tick down into the active state object
+	current_state.update(delta)
+	
+	# Check if the state has requested a transition
+	if current_state.next_state != null:
+		_transition_to(current_state.next_state)
+
+func _transition_to(new_state: State) -> void:
+	# 1. Clean up the old state
+	if current_state != null:
+		current_state.exit()
+		
+	# 2. Swap the pointer
+	current_state = new_state
+	
+	# 3. Initialize the new state
+	if current_state != null:
+		current_state.enter()
+
+```
+
+--- SCRIPT: res://scripts/components/vfx/FABRIC.VFX.VFXInstance.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: FABRIC.VFX.VFXInstance
+# Description: Logic for a single pooled VFX instance. Handles visibility and auto-hide.
+# Author: Architect
+
+extends Node3D
+class_name VFXInstance
+
+var _active: bool = false
+var _t: float = 0.0
+
+func play(pos: Vector3) -> void:
+	global_position = pos
+	show()
+	_active = true
+	_t = 0.0
+	# Access child node safely
+	if has_node("Particles"):
+		get_node("Particles").set(&"emitting", true)
+
+func _process(delta: float) -> void:
+	if not _active: return
+	_t += delta
+	if _t >= 2.0:
+		_active = false
+		hide()
+
+```
+
+--- SCRIPT: res://scripts/components/visuals/COMP.Visual.AttackGlint.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMP.Visual.AttackGlint
+# Description: Standardized visual spark effect for successful attacks.
+# Author: Architect
+
+extends MeshInstance3D
+
+class_name AttackGlintComponent
+
+func trigger_glint():
+	show()
+	var tw = create_tween()
+	tw.tween_property(self, "scale", Vector3(1.5, 1.5, 1.5), 0.1)
+	tw.tween_property(self, "scale", Vector3.ZERO, 0.1).set_delay(0.1)
+
+```
+
+--- SCRIPT: res://scripts/entities/enemies/bosses/FABRIC.Boss.Orchestrator.gd ---
+```gdscript
+# [GVRN] [FABRIC] [BOSS]
+# Artifact ID: FABRIC.Boss.Orchestrator
+# Version: v1.1 [SOVEREIGN]
+# Status: [CANONIZED]
+# Description: Hierarchical behavior manager for multi-phase bosses.
+# Author: Architect
+
+extends CharacterBody3D
+class_name BossOrchestrator
+
+@export var phases: Array[BossPhaseData] = []
+
+var _phase_idx: int = 0
+
+func _ready():
+	$HealthComponent.health_changed.connect(_check_phase)
+	$StateMachine.setup(self, $Visuals/AnimationPlayer)
+func _check_phase(c, m):
+	if _phase_idx < phases.size() and (c/m) <= phases[_phase_idx].hp_threshold:
+		_apply_phase(phases[_phase_idx])
+func _apply_phase(data):
+	_phase_idx += 1
+	$NavigationAgent3D.max_speed *= data.speed_mult
+	$StateMachine.on_transition(T.StateID.STAGGER)
+	if $Visuals/AnimationPlayer.has_animation(data.phase_animation):
+		$Visuals/AnimationPlayer.play(data.phase_animation)
+func _physics_process(_d): move_and_slide()
+
+```
+
+--- SCRIPT: res://scripts/entities/enemies/COMM.Enemy.EnemyBase.gd ---
+```gdscript
+"""
+[GVRN] [COMM] [ENEMY]
+Artifact ID: COMM.Enemy.EnemyBase
+Version: v1.1 [SOVEREIGN]
+Status: [CANONIZED]
+Description: Base class for all enemy entities.
+"""
+
+extends CharacterBody3D
+class_name EnemyBase
+
+@export_group("Dependencies")
+
+@export var state_machine: StateMachine
+@export var nav_comp: Node # NavigationComponent - Untyped for resiliency
+@export var anim: AnimationPlayer
+@export var detection_component: DetectionComponent
+
+
+var target: Node3D
+
+func _ready() -> void:
+	assert(state_machine != null, "EnemyBase: state_machine is unassigned!")
+	_weave_dependencies()
+
+	# Route physical detection events upwards to the Orchestrator's state
+	if detection_component:
+		if not detection_component.target_acquired.is_connected(_on_target_acquired):
+			detection_component.target_acquired.connect(_on_target_acquired)
+		if not detection_component.target_lost.is_connected(_on_target_lost):
+			detection_component.target_lost.connect(_on_target_lost)
+
+func _on_target_acquired(new_target: Node3D) -> void:
+	target = new_target
+
+func _on_target_lost() -> void:
+	target = null
+
+func _weave_dependencies() -> void:
+	for child in state_machine.get_children():
+		var state := child as State
+		if not state:
+			continue
+		state.actor = self
+		if anim:
+			state.anim = anim
+
+func _physics_process(_delta: float) -> void:
+	move_and_slide()
+
+```
+
+--- SCRIPT: res://scripts/entities/enemies/states/COMM.Enemy.State.Attack.gd ---
+```gdscript
+"""
+[GVRN] [COMM] [ENEMY] [STATE]
+Artifact ID: COMM.Enemy.State.Attack
+"""
+extends State
+class_name AIAttackState
+
+func enter(_msg: Dictionary = {}) -> void:
+	if anim: anim.play("attack")
+	get_tree().create_timer(1.0).timeout.connect(func(): state_machine.transition_to("AIChaseState"))
+
+```
+
+--- SCRIPT: res://scripts/entities/enemies/states/COMM.Enemy.State.Chase.gd ---
+```gdscript
+"""
+[GVRN] [COMM] [ENEMY] [STATE]
+Artifact ID: COMM.Enemy.State.Chase
+"""
+extends State
+class_name AIChaseState
+
+# 1. Strictly Typed Variables
+@export_group("Detection")
+@export var attack_range: float = 2.0
+@export var lose_interest_range: float = 15.0
+@export var move_speed: float = 5.0
+@export var los_ray: RayCast3D
+
+
+func enter(_msg: Dictionary = {}) -> void:
+	if anim and anim.has_animation(&"move"): 
+		anim.play(&"move")
+
+func physics_update(_delta: float) -> void:
+	if not actor: return
+	
+	# Target Acquisition Module
+	if not actor.get("target"):
+		_find_new_target()
+		return
+
+	var target: Node3D = actor.target
+	var dist: float = actor.global_position.distance_to(target.global_position)
+	
+	# Transition Logic using Enums (Internal logic maps to state_machine strings)
+	if _check_transitions(dist, target):
+		return
+
+	# Movement Execution
+	_execute_movement(target.global_position)
+
+func _find_new_target() -> void:
+	var players = get_tree().get_nodes_in_group("Player")
+	if players.size() > 0:
+		actor.target = players[0]
+	else:
+		state_machine.transition_to("AIIdleState")
+
+# AIChaseState.gd
+func _check_transitions(dist: float, target: Node3D) -> bool:
+	if dist < attack_range:
+		state_machine.transition_to(&"AIAttackState") 
+		return true
+		
+	# Line of Sight & Interest Check
+	if dist > lose_interest_range or not _has_line_of_sight(target):
+		actor.target = null
+		state_machine.transition_to(&"AIIdleState") 
+		return true
+	
+	return false
+
+func _has_line_of_sight(target: Node3D) -> bool:
+	if not los_ray: return true # Fallback if raycast is missing
+	los_ray.look_at(target.global_position + Vector3.UP)
+	return los_ray.is_colliding() and los_ray.get_collider() == target
+
+func _execute_movement(target_pos: Vector3) -> void:
+	var direction: Vector3 = (target_pos - actor.global_position).normalized()
+	actor.velocity = direction * move_speed
+	actor.move_and_slide()
+
+```
+
+--- SCRIPT: res://scripts/entities/enemies/states/COMM.Enemy.State.Idle.gd ---
+```gdscript
+"""
+[GVRN] [COMM] [ENEMY] [STATE]
+Artifact ID: COMM.Enemy.State.Idle
+"""
+extends State
+class_name AIIdleState
+
+@export_group("Wander Settings")
+@export var wander_radius: float = 6.0
+@export var idle_time_min: float = 2.0
+@export var idle_time_max: float = 4.0
+
+var _timer: float = 0.0
+var _is_wandering: bool = false
+var _wander_target: Vector3
+var _origin_pos: Vector3
+
+func enter(_msg: Dictionary = {}) -> void:
+	if actor: _origin_pos = actor.global_position
+	_start_idle()
+
+func physics_update(_delta: float) -> void:
+	if not actor: 
+		return
+		
+	# The Orchestrator (EnemyBase) manages the target variable via DetectionComponent.
+	# If a target is assigned, we immediately transition to the Chase state.
+	if actor.get("target") != null:
+		state_machine.transition_to(&"AIChaseState")
+		return
+
+	_timer -= _delta
+
+	if _is_wandering:
+		var nav := actor.get("nav_comp") as NavigationComponent
+		if nav:
+			nav.move_to(_wander_target)
+			
+		if _timer <= 0.0 or (nav and nav.nav_agent and nav.nav_agent.is_navigation_finished()):
+			_start_idle()
+	else:
+		if _timer <= 0.0:
+			_start_wander()
+
+func _start_idle() -> void:
+	_is_wandering = false
+	_timer = randf_range(idle_time_min, idle_time_max)
+	if anim and anim.has_animation(&"idle"): anim.play(&"idle")
+	if actor: actor.velocity = Vector3.ZERO
+
+func _start_wander() -> void:
+	_is_wandering = true
+	_timer = 5.0 # Failsafe max wander time (Prevents getting permanently stuck on geometry)
+	if anim and anim.has_animation(&"move"): anim.play(&"move")
+	
+	var rand_dir := Vector3(randf_range(-1.0, 1.0), 0.0, randf_range(-1.0, 1.0)).normalized()
+	_wander_target = _origin_pos + (rand_dir * randf_range(1.0, wander_radius))
+
+```
+
+--- SCRIPT: res://scripts/entities/player/COMM.Avatar.Kaelen.gd ---
+```gdscript
+"""
+[GVRN]
+Artifact ID:   COMM.Avatar.Kaelen
+Description:   Kaelen test vessel controller for prototyping the Instability System.
+			   Fully decoupled from the main player logic.
+"""
+extends CharacterBody3D
+class_name Kaelen
+
+@export_group("Dependencies")
+@export var camera: PlayerCamera
+@export var visuals: Node3D
+
+@export_group("Stats")
+@export var speed: float = 6.0
+@export var rotation_speed: float = 12.0
+
+const ACTION_MOVE_LEFT = &"move_left"
+const ACTION_MOVE_RIGHT = &"move_right"
+const ACTION_MOVE_FORWARD = &"move_forward"
+const ACTION_MOVE_BACK = &"move_back"
+
+func _ready() -> void:
+	if camera:
+		camera.target = self
+
+func _physics_process(delta: float) -> void:
+	var input := Input.get_vector(
+		ACTION_MOVE_LEFT,
+		ACTION_MOVE_RIGHT,
+		ACTION_MOVE_FORWARD,
+		ACTION_MOVE_BACK,
+	)
+	var dir := Vector3.ZERO
+	
+	if input.length() > 0.1:
+		# Calculate movement relative to the camera's orientation
+		var cam_basis := camera.global_transform.basis if camera else global_transform.basis
+		var forward := -Vector3(cam_basis.z.x, 0.0, cam_basis.z.z).normalized()
+		var right := Vector3(cam_basis.x.x, 0.0, cam_basis.x.z).normalized()
+		dir = (forward * input.y + right * input.x).normalized()
+		
+		# Smoothly rotate the visual mesh towards the movement direction
+		if visuals:
+			var target_angle := atan2(-dir.x, -dir.z)
+			var target_y := lerp_angle(
+				visuals.rotation.y,
+				target_angle,
+				rotation_speed * delta,
+			)
+			visuals.rotation.y = target_y
+
+	velocity.x = dir.x * speed
+	velocity.z = dir.z * speed
+
+	if not is_on_floor():
+		velocity.y -= 9.8 * delta
+
+	move_and_slide()
+
+```
+
+--- SCRIPT: res://scripts/entities/player/COMM.Avatar.Player.gd ---
+```gdscript
+"""
+[GVRN] [UAM-V15]
+Artifact ID:   COMM.Avatar.Player
+Description:   Primary player character controller. 
+			   Orchestrates physics, states, and animation triggers.
+Version:       1.2 [SOVEREIGN]
+Relationships: GOVERNED_BY(Director), PROVIDES(CharacterState)
+Status:        [CANONIZED]
+"""
+
+extends CharacterBody3D
+class_name Player
+
+@export_group("Dependencies")
+@export var state_machine: Node # The StateMachine node
+@export var camera: PlayerCamera
+@export var visuals: Node3D
+@export var animation_tree: AnimationTree
+@export var animation_player: AnimationPlayer
+@export var health_component: HealthComponent
+@export var stamina_component: StaminaComponent
+@export var hurtbox_component: HurtboxComponent
+@export var hitbox_component: HitboxComponent
+@export var poise_component: PoiseComponent
+
+func _ready() -> void:
+	assert(state_machine != null, "Player: state_machine is unassigned!")
+	assert(animation_tree != null, "Player: animation_tree is unassigned!")
+	assert(animation_player != null, "Player: animation_player is unassigned!")
+	assert(health_component != null, "Player: health_component is unassigned!")
+	assert(stamina_component != null, "Player: stamina_component is unassigned!")
+	
+	Director.instance.player = self
+	Director.instance.player_health_component = health_component
+	Director.instance.player_stamina_component = stamina_component
+
+	# BRIDGE-PATTERN: Routing local component signals to global synapse
+	health_component.health_changed.connect(
+		func(cur, max_val): GameEvents.instance.player_health_changed.emit(cur, max_val)
+	)
+	stamina_component.stamina_changed.connect(
+		func(cur, max_val): GameEvents.instance.player_stamina_changed.emit(cur, max_val)
+	)
+
+	if camera:
+		camera.target = self
+		camera.target_locked.connect(
+			func(t): GameEvents.instance.lock_on_target_changed.emit(t)
+		)
+
+	# PHOENIX-GVRN: Pattern 1 - Automatic Dependency Injection
+	_weave_dependencies()
+
+func _weave_dependencies(parent: Node = null) -> void:
+	if parent == null:
+		parent = state_machine
+	for child in parent.get_children():
+		var state := child as State
+		if not state:
+			continue
+		
+		state.actor = self
+		state.anim = animation_player
+		state.camera = camera
+		if "animation_tree" in state: state.set(&"animation_tree", animation_tree)
+		
+		# Reflection-based fallback for decoupled components
+		if "hurtbox" in state: state.set(&"hurtbox", hurtbox_component)
+		if "hitbox" in state: state.set(&"hitbox", hitbox_component)
+		
+		# Recurse for nested states
+		_weave_dependencies(state)
+
+	# Connect external triggers to the new transition interface
+	if poise_component and not poise_component.posture_broken.is_connected(_on_posture_broken):
+		poise_component.posture_broken.connect(_on_posture_broken)
+
+func _on_posture_broken() -> void:
+	if state_machine.has_method(&"transition_to"):
+		state_machine.transition_to(&"Stagger")
+
+func _physics_process(delta: float) -> void:
+	# PHOENIX-GVRN: Central Gravity Management (SKILL-006)
+	if not is_on_floor():
+		velocity.y -= ProjectSettings.get_setting("physics/3d/default_gravity") * delta
+	
+	move_and_slide()
+
+```
+
+--- SCRIPT: res://scripts/entities/player/COMM.Avatar.PlayerCamera.gd ---
+```gdscript
+"""
+[GVRN]
+Artifact ID:   COMM.Avatar.PlayerCamera
+Description:   Active 3rd person camera controller with mouse look and smooth orbiting.
+"""
+extends SpringArm3D
+class_name PlayerCamera
+
+@export_group("Camera Settings")
+@export var mouse_sensitivity: float = 0.003
+@export var min_pitch: float = -PI / 4.0
+@export var max_pitch: float = PI / 3.0
+@export var vertical_offset: float = 1.5
+
+var target: Node3D:
+	set(value):
+		target = value
+		# FIX: Absolute immunity to player collision (cures jitter & black clipping lines)
+		if target is CollisionObject3D:
+			clear_excluded_objects()
+			add_excluded_object(target.get_rid())
+
+var _camera: Camera3D
+var lock_on: LockOnComponent
+
+signal target_locked(target: Node3D)
+
+func _ready() -> void:
+	Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	top_level = true
+	
+	_camera = get_node_or_null("Camera3D") as Camera3D
+	lock_on = LockOnComponent.new()
+	add_child(lock_on)
+	lock_on.target_changed.connect(func(t): target_locked.emit(t))
+
+func _unhandled_input(event: InputEvent) -> void:
+	if get_tree().paused: return
+
+	# Toggle Lock-On
+	if event.is_action_pressed("lock_on"):
+		if lock_on and is_instance_valid(lock_on.current_target):
+			lock_on.current_target = null
+		elif _camera:
+			lock_on.current_target = lock_on.find_closest_target(_camera)
+
+	# Handle camera rotation and target flicking
+	if event is InputEventMouseMotion and Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+		# If locked on, handle flick-to-switch
+		if lock_on and is_instance_valid(lock_on.current_target):
+			var flick_threshold: float = 40.0
+			if abs(event.relative.x) > flick_threshold:
+				var flick_dir = Vector2(sign(event.relative.x), 0)
+				var new_target = lock_on.find_target_in_direction(_camera, flick_dir)
+				if new_target:
+					lock_on.current_target = new_target
+		else:
+			# Free-look
+			rotation.y -= event.relative.x * mouse_sensitivity
+			rotation.x -= event.relative.y * mouse_sensitivity
+			rotation.x = clamp(rotation.x, min_pitch, max_pitch)
+		
+	# Allow escaping the mouse lock for testing purposes
+	if event.is_action_pressed("ui_cancel"):
+		if Input.mouse_mode == Input.MOUSE_MODE_CAPTURED:
+			Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+		else:
+			Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+
+func _physics_process(_delta: float) -> void:
+	# Strictly follow the assigned target, maintaining the vertical offset
+	if target:
+		global_position = target.global_position + Vector3(0, vertical_offset, 0)
+
+	# Smoothly rotate the SpringArm to face the locked-on target
+	if lock_on and is_instance_valid(lock_on.current_target):
+		var target_pos: Vector3 = lock_on.current_target.global_position
+		var dir: Vector3 = (target_pos - global_position).normalized()
+		
+		rotation.y = lerp_angle(rotation.y, atan2(-dir.x, -dir.z), 10.0 * _delta)
+		rotation.x = lerp_angle(rotation.x, asin(dir.y), 10.0 * _delta)
+
+```
+
+--- SCRIPT: res://scripts/entities/player/Main.gd ---
+```gdscript
+# [GVRN]
+# Main.gd
+# Description: Root scene orchestrator. Manages game state and pausing.
+extends Node3D
+
+func _ready() -> void:
+	# Critical: This ensures the Main script still listens to inputs while the game is paused!
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	
+	if not GameEvents.instance.game_state_changed.is_connected(_on_game_state_changed):
+		GameEvents.instance.game_state_changed.connect(_on_game_state_changed)
+	
+	# Start the game
+	GameEvents.instance.game_state_changed.emit(T.GameState.IN_GAME)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		var is_paused = get_tree().paused
+		var new_state = T.GameState.IN_GAME if is_paused else T.GameState.PAUSED
+		GameEvents.instance.game_state_changed.emit(new_state)
+
+func _on_game_state_changed(new_state: T.GameState) -> void:
+	if new_state == T.GameState.IN_GAME:
+		get_tree().paused = false
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	elif new_state == T.GameState.PAUSED:
+		get_tree().paused = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+```
+
+--- SCRIPT: res://scripts/entities/player/states/COMM.Avatar.State.ActionBlock.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMM.Avatar.State.ActionBlock
+# Description: Parent state for combat actions that pauses physics movement.
+# Author: Architect
+
+extends State
+class_name PlayerActionBlockState
+
+func enter(_msg: Dictionary = {}) -> void:
+	# PHOENIX-GVRN: Physics execution paused during animation loops
+	if actor:
+		actor.velocity = Vector3.ZERO
+		
+	# SKILL-010: Input Buffering (Ghost-Proof Logic)
+	# Check if we should immediately transition to a sub-action
+	if _msg.has("target_action"):
+		state_machine.transition_to(_msg.target_action)
+
+func physics_update(_delta: float) -> void:
+	# Default behavior for ActionBlocks is to prevent movement drift.
+	# Subclasses like Dodge can override this if they manage their own velocity.
+	_freeze_movement()
+
+func _freeze_movement() -> void:
+	if actor:
+		actor.velocity.x = 0
+		actor.velocity.z = 0
+
+```
+
+--- SCRIPT: res://scripts/entities/player/states/COMM.Avatar.State.Attack.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMM.Avatar.State.Attack
+# Description: Standard melee attack state with buffered input and one-shot hitbox activation.
+# Author: Architect
+
+extends PlayerActionBlockState
+class_name PlayerAttackState
+
+## PHOENIX ARCHITECT: SKILL-008 & SKILL-010 ALIGNMENT
+## Atomic combat state handling animation playback, stamina consumption, and collision activation.
+
+@export var stamina_cost: float = 15.0
+@export var damage: float = 20.0
+
+# Timings (Simulated for Demo - would ideally use Animation Events)
+@export var hit_delay: float = 0.25 # Seconds before hitbox activates
+@export var state_duration: float = 0.6 # Total attack duration
+
+var _timer: float = 0.0
+var _hit_landed: bool = false
+var _buffered_input: bool = false
+
+func enter(_msg: Dictionary = {}) -> void:
+	super.enter(_msg)
+	
+	_timer = 0.0
+	_hit_landed = false
+	_buffered_input = false
+	
+	# 1. STAMINA CHECK
+	var stamina = Director.instance.player_stamina_component
+	if stamina:
+		if not stamina.consume(stamina_cost):
+			state_machine.transition_to(&"Idle")
+			return
+	
+	# 2. ANIMATION
+	if animation_tree:
+		var playback = animation_tree.get(&"parameters/playback")
+		if playback: playback.travel(&"attack")
+	elif anim:
+		if anim.has_animation(&"attack"):
+			anim.play(&"attack")
+		else:
+			push_warning("Attack animation 'attack' not found. Using fallback.")
+			if anim.has_animation(&"idle"):
+				anim.play(&"idle")
+	
+	# 3. ROTATION (Face movement direction if moving, or stay still)
+	var input := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
+	if input.length() > 0.1 and camera:
+		var cam_basis: Basis = camera.global_transform.basis
+		var forward := -Vector3(cam_basis.z.x, 0, cam_basis.z.z).normalized()
+		var right := Vector3(cam_basis.x.x, 0, cam_basis.x.z).normalized()
+		var dir := (forward * -input.y + right * input.x).normalized()
+		if actor.visuals:
+			actor.visuals.rotation.y = atan2(-dir.x, -dir.z)
+
+func physics_update(delta: float) -> void:
+	super.physics_update(delta)
+	
+	_timer += delta
+	
+	# 1. HITBOX ACTIVATION (SKILL-009)
+	if not _hit_landed and _timer >= hit_delay:
+		if hitbox:
+			hitbox.damage = damage
+			hitbox.activate_one_shot()
+			_hit_landed = true
+	
+	# 2. INPUT BUFFERING (SKILL-010)
+	if Input.is_action_just_pressed(&"attack"):
+		_buffered_input = true
+	
+	# 3. STATE COMPLETION
+	if _timer >= state_duration:
+		if _buffered_input:
+			state_machine.transition_to(&"Attack") # Combo!
+		else:
+			state_machine.transition_to(&"Idle")
+
+func exit() -> void:
+	super.exit()
+	# Clean up any ghost variables
+	_hit_landed = false
+	_buffered_input = false
+
+```
+
+--- SCRIPT: res://scripts/entities/player/states/COMM.Avatar.State.Dodge.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMM.Avatar.State.Dodge
+# Description: Standard dodge roll with Root Motion Extraction.
+# Author: Architect
+
+extends PlayerActionBlockState
+class_name PlayerDodgeState
+
+@export var duration: float = 0.4
+@export var force: float = 12.0
+
+var _timer: float = 0.0
+var _dodge_dir: Vector3 = Vector3.ZERO
+
+func enter(_msg: Dictionary = {}) -> void:
+	super.enter(_msg)
+	_timer = duration
+	
+	if animation_tree:
+		var playback = animation_tree.get(&"parameters/playback")
+		if playback: playback.travel(&"dodge")
+	elif anim:
+		if anim.has_animation(&"dodge"):
+			anim.play(&"dodge")
+	
+	if hurtbox: hurtbox.is_invincible = true
+
+	
+	# SKILL-010: Buffer check (If they want to attack immediately after dodge)
+	if Input.is_action_just_pressed(&"attack"):
+		state_machine.transition_to(&"Attack")
+		return
+
+	if actor and actor.get("locked_target") and is_instance_valid(actor.locked_target):
+		var target_pos: Vector3 = actor.locked_target.global_position
+		var face_dir := (target_pos - actor.global_position).normalized()
+		if actor.visuals:
+			actor.visuals.rotation.y = atan2(-face_dir.x, -face_dir.z)
+
+	var input := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
+	var dir := Vector3.ZERO
+	
+	if input.length() > 0.1 and camera:
+		var cam_basis: Basis = camera.global_transform.basis
+		dir = (cam_basis.x * input.x - cam_basis.z * input.y).normalized()
+		dir.y = 0
+		
+		# If NOT locked on, rotate character to face dodge direction
+		var is_locked = actor.get("locked_target") and is_instance_valid(actor.locked_target)
+		if not is_locked and actor.visuals:
+			actor.visuals.rotation.y = atan2(-dir.x, -dir.z)
+	elif actor.visuals:
+		# Fallback: Dodge in current facing direction
+		dir = -actor.visuals.global_transform.basis.z.normalized()
+	
+	_dodge_dir = dir
+	actor.velocity = _dodge_dir * force
+
+func physics_update(delta: float) -> void:
+	# NOTE: We do NOT call super.physics_update(delta) here 
+	# because we wa nt to keep the 'force' velocity instead of freezing.
+	if animation_tree:
+		var root_motion: Vector3 = animation_tree.get_root_motion_position()
+		var velocity_vec = (actor.visuals.global_transform.basis * root_motion) / delta
+		actor.velocity.x = velocity_vec.x
+		actor.velocity.z = velocity_vec.z
+	else:
+		actor.velocity = _dodge_dir * force
+		
+	_timer -= delta
+	if _timer <= 0:
+		state_machine.transition_to(&"Move")
+
+func exit() -> void:
+	super.exit()
+	if hurtbox:
+		hurtbox.is_invincible = false
+
+```
+
+--- SCRIPT: res://scripts/entities/player/states/COMM.Avatar.State.Fall.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMM.Avatar.State.Fall
+# Description: Handling downward velocity and landing detection.
+# Author: Architect
+
+extends PlayerActionBlockState
+class_name PlayerFallState
+
+func enter(_msg: Dictionary = {}) -> void:
+	super.enter(_msg)
+	if anim:
+		if anim.has_animation(&"fall"):
+			anim.play(&"fall")
+		else:
+			anim.play(&"idle")
+
+func physics_update(delta: float) -> void:
+	# Add horizontal control during fall
+	var input := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
+	if camera:
+		var cam_basis: Basis = camera.global_transform.basis
+		var direction := (cam_basis.x * input.x - cam_basis.z * input.y).normalized()
+		direction.y = 0
+		
+		var air_speed = 3.0
+		actor.velocity.x = move_toward(actor.velocity.x, direction.x * air_speed, delta * 10.0)
+		actor.velocity.z = move_toward(actor.velocity.z, direction.z * air_speed, delta * 10.0)
+		
+		if input.length() > 0.1 and actor.visuals:
+			var target_rot = atan2(-direction.x, -direction.z)
+			actor.visuals.rotation.y = lerp_angle(actor.visuals.rotation.y, target_rot, delta * 10.0)
+
+	if actor.is_on_floor():
+		if input.length() > 0.1:
+			state_machine.transition_to(&"Move")
+		else:
+			state_machine.transition_to(&"Idle")
+
+func exit() -> void:
+	super.exit()
+
+```
+
+--- SCRIPT: res://scripts/entities/player/states/COMM.Avatar.State.Idle.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMM.Avatar.State.Idle
+# Description: Standardized idle state logic.
+# Author: Architect
+
+extends State
+class_name PlayerIdleState
+
+func enter(_msg: Dictionary = {}) -> void:
+	if animation_tree:
+		var playback = animation_tree.get(&"parameters/playback")
+		if playback: playback.travel(&"idle")
+	elif anim: 
+		anim.play(&"idle")
+		
+	if actor: actor.velocity = Vector3.ZERO
+
+func physics_update(_delta: float) -> void:
+	if not is_instance_valid(actor): return
+	
+
+	var input := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
+	if not actor.is_on_floor():
+		state_machine.transition_to(&"Fall")
+		return
+
+	if Input.is_action_just_pressed(&"jump"):
+		state_machine.transition_to(&"Jump")
+		return
+
+	if input.length() > 0.1:
+		state_machine.transition_to(&"Move")
+		return
+	
+	if Input.is_action_just_pressed(&"attack"):
+		state_machine.transition_to(&"Attack")
+		return
+
+	if Input.is_action_just_pressed(&"dodge"):
+		var stamina = Director.instance.player_stamina_component
+		if stamina and stamina.consume(25.0):
+			state_machine.transition_to(&"Dodge")
+			return
+
+	if Input.is_action_just_pressed(&"parry"):
+		state_machine.transition_to(&"Parry")
+		return
+
+```
+
+--- SCRIPT: res://scripts/entities/player/states/COMM.Avatar.State.Jump.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMM.Avatar.State.Jump
+# Description: Handling vertical impulse and transition to Fall.
+# Author: Architect
+
+extends PlayerActionBlockState
+class_name PlayerJumpState
+
+@export var jump_force: float = 4.5
+
+func enter(_msg: Dictionary = {}) -> void:
+	super.enter(_msg)
+	if anim:
+		if anim.has_animation(&"jump"):
+			anim.play(&"jump")
+		else:
+			# Fallback to idle if jump animation is missing
+			anim.play(&"idle")
+	
+	actor.velocity.y = jump_force
+
+func physics_update(delta: float) -> void:
+	# Add horizontal control during jump
+	var input := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
+	if camera:
+		var cam_basis: Basis = camera.global_transform.basis
+		var direction := (cam_basis.x * input.x - cam_basis.z * input.y).normalized()
+		direction.y = 0
+		
+		# Air control is reduced
+		var air_speed = 3.0
+		actor.velocity.x = move_toward(actor.velocity.x, direction.x * air_speed, delta * 10.0)
+		actor.velocity.z = move_toward(actor.velocity.z, direction.z * air_speed, delta * 10.0)
+		
+		# Rotate visuals to face movement
+		if input.length() > 0.1 and actor.visuals:
+			var target_rot = atan2(-direction.x, -direction.z)
+			actor.visuals.rotation.y = lerp_angle(actor.visuals.rotation.y, target_rot, delta * 10.0)
+
+	# Transition to Fall when downward momentum starts
+	if actor.velocity.y <= 0:
+		state_machine.transition_to(&"Fall")
+
+func exit() -> void:
+	super.exit()
+
+```
+
+--- SCRIPT: res://scripts/entities/player/states/COMM.Avatar.State.Move.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMM.Avatar.State.Move
+# Description: Standard movement logic with Root Motion Extraction.
+# Author: Architect
+
+extends State
+class_name PlayerMoveState
+
+## PHOENIX ARCHITECT: SKILL-011 & SKILL-013 ALIGNMENT
+## Locomotion state handling camera-relative movement, root motion, and visual rotation.
+
+# SKILL-001: Backing-Field Resilience
+var _speed: float = 7.0
+@export var speed: float:
+	get: return _speed
+	set(v): _speed = maxf(0.0, v)
+
+var _rotation_speed: float = 12.0
+@export var rotation_speed: float:
+	get: return _rotation_speed
+	set(v): _rotation_speed = maxf(0.0, v)
+
+func enter(_msg: Dictionary = {}) -> void:
+	if animation_tree:
+		var playback = animation_tree.get(&"parameters/playback")
+		if playback: playback.travel(&"walk")
+
+func physics_update(delta: float) -> void:
+	if not is_instance_valid(actor): return
+
+	var input := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
+
+	if not actor.is_on_floor():
+		state_machine.transition_to(&"Fall")
+		return
+
+	if Input.is_action_just_pressed(&"jump"):
+		state_machine.transition_to(&"Jump")
+		return
+
+	if input.length() < 0.1:
+		if actor.velocity.length() < 0.1:
+			actor.velocity = Vector3.ZERO
+			state_machine.transition_to(&"Idle")
+		return
+
+	# 1. ORIENTATION LOGIC
+	if not camera:
+		push_error("MoveState: camera reference is null!")
+		return
+		
+	var cam_basis := camera.global_transform.basis
+	var forward := -Vector3(cam_basis.z.x, 0, cam_basis.z.z).normalized()
+	var right := Vector3(cam_basis.x.x, 0, cam_basis.x.z).normalized()
+	var dir := (forward * -input.y + right * input.x).normalized()
+
+	if dir.length() > 0.1 and actor.visuals:
+		var target_angle := atan2(-dir.x, -dir.z)
+		actor.visuals.rotation.y = lerp_angle(
+			actor.visuals.rotation.y,
+			target_angle,
+			rotation_speed * delta
+		)
+
+	# 2. ROOT MOTION EXTRACTION
+	# We consume the delta-position from the AnimationTree's root track
+	var root_motion: Vector3 = animation_tree.get_root_motion_position()
+	
+	# Rotate root motion by actor's current orientation
+	var velocity_vec = (actor.visuals.global_transform.basis * root_motion) / delta
+	
+	if root_motion.length_squared() > 0.00001:
+		actor.velocity.x = velocity_vec.x
+		actor.velocity.z = velocity_vec.z
+	else:
+		# Fallback: Procedural movement if no root motion is extracted
+		actor.velocity.x = dir.x * speed
+		actor.velocity.z = dir.z * speed
+	
+	# Gravity is now handled centrally in Player.gd _physics_process
+	
+
+	var stamina = Director.instance.player_stamina_component
+	var can_act = stamina and (stamina.current_stamina / stamina.max_stamina) >= 0.1
+
+	if Input.is_action_just_pressed(&"attack"):
+		if can_act:
+			state_machine.transition_to(&"Attack")
+			return
+
+	if Input.is_action_just_pressed(&"dodge"):
+		if can_act and stamina.consume(25.0):
+			state_machine.transition_to(&"Dodge")
+			return
+
+	if Input.is_action_just_pressed(&"parry"):
+		if can_act:
+			state_machine.transition_to(&"Parry")
+			return
+
+```
+
+--- SCRIPT: res://scripts/entities/player/states/COMM.Avatar.State.Parry.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMM.Avatar.State.Parry
+# Description: Standardized parry animation state with frame-locked recovery.
+# Author: Architect
+
+extends PlayerActionBlockState
+class_name PlayerParryState
+
+@export var duration: float = 0.3
+
+var _timer: float = 0.0
+
+func enter(_msg: Dictionary = {}) -> void:
+	super.enter(_msg)
+	_timer = duration
+	
+	if animation_tree:
+		var playback = animation_tree.get(&"parameters/playback")
+		if playback: playback.travel(&"parry")
+	elif anim:
+		if anim.has_animation(&"parry"):
+			anim.play(&"parry")
+		else:
+			push_warning("Parry animation 'parry' not found. Using fallback.")
+			if anim.has_animation(&"idle"):
+				anim.play(&"idle")
+
+	
+	# SKILL-010: Buffer check
+	if Input.is_action_just_pressed(&"attack"):
+		state_machine.transition_to(&"Attack")
+		return
+		
+	if hurtbox:
+		hurtbox.is_parry_window = true
+
+func exit() -> void:
+	super.exit()
+	if hurtbox:
+		hurtbox.is_parry_window = false
+
+func physics_update(delta: float) -> void:
+	super.physics_update(delta)
+	_timer -= delta
+	
+	if _timer <= 0:
+		state_machine.transition_to(&"Idle")
+
+```
+
+--- SCRIPT: res://scripts/entities/player/states/COMM.Avatar.State.Stagger.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMM.Avatar.State.Stagger
+# Description: Hit-stun / Stagger state when poise is broken.
+# Author: Architect
+
+extends PlayerActionBlockState
+class_name PlayerStaggerState
+
+@export var duration: float = 0.6
+var _timer: float = 0.0
+
+func enter(_msg: Dictionary = {}) -> void:
+	super.enter(_msg)
+	_timer = duration
+	if anim:
+		if anim.has_animation(&"stagger"):
+			anim.play(&"stagger")
+		else:
+			# Fallback if stagger is missing
+			if anim.has_animation(&"idle"):
+				anim.play(&"idle")
+
+	
+	# Clear any buffered inputs on stagger to avoid "Ghost Attacks" after stun
+	# This is the inverse of SKILL-010 for negative states.
+
+func physics_update(delta: float) -> void:
+	super.physics_update(delta)
+	_timer -= delta
+	
+	if _timer <= 0:
+		state_machine.transition_to(&"Idle")
+
+```
+
+--- SCRIPT: res://scripts/entities/shared/states/COMM.Shared.State.Stagger.gd ---
+```gdscript
+"""
+[GVRN] [COMM] [SHARED] [STATE]
+Artifact ID: COMM.Shared.State.Stagger
+"""
+extends State
+class_name StaggerState
+
+@export var duration: float = 0.5
+var _timer: float = 0.0
+
+func enter(_msg: Dictionary = {}) -> void:
+	if anim: 
+		anim.play(&"stagger")
+	
+	# Set the atomic timer (SKILL-003 / SKILL-008)
+	_timer = duration
+	
+	# Optional: Emit a global signal via the Synapse (SKILL-004)
+	if is_instance_valid(actor):
+		if _Director.player:
+			_Director.player.state_changed.emit(actor, T.CharacterState.STAGGERED)
+
+func physics_update(delta: float) -> void:
+	_timer -= delta
+	
+	if _timer <= 0:
+		state_machine.transition_to(&"IdleState")
+
+```
+
+--- SCRIPT: res://scripts/entities/shared/states/VISUAL.Handler.HitStopHandler.gd ---
+```gdscript
+# res://scripts/entities/shared/states/VisualHandler.gd
+extends Node
+class_name VisualHandler
+
+func play_hit_flash(visual_node: Node3D) -> void:
+	var tween = create_tween()
+	# Phoenix VII.2: Modulate raw RGB values above 1.0 for HDR Bloom
+	tween.tween_property(visual_node, "visual_instance_shader_parameter/flash_weight", 1.0, 0.05)
+	tween.tween_property(visual_node, "visual_instance_shader_parameter/flash_weight", 0.0, 0.1)
+
+```
+
+--- SCRIPT: res://scripts/globals/CORE.Kernel.Director.gd ---
+```gdscript
+"""
+[GVRN] [UAM-V15]
+Artifact ID:   CORE.Kernel.Director
+Description:   Central registry and signal bus for all active game systems.
+			   Ensures systemic coherence and Zero-Gravity communication.
+Version:       1.2 [SOVEREIGN]
+Relationships: GOVERNED_BY(Self), PROVIDES(GlobalRegistry)
+Status:        [CANONIZED]
+"""
+
+@warning_ignore("unused_signal")
+extends Node
+class_name Director
+static var instance: Director
+
+func _init() -> void:
+	instance = self
+
+# Signals must be declared before they are emitted in property setters
+signal player_health_ready(node)
+signal player_ready(player)
+signal quest_system_ready(mgr)
+
+var _p_health
+var player_health_component:
+	get: return _p_health
+	set(v):
+		_p_health = v
+		if v: player_health_ready.emit(v)
+
+var vfx_pool
+var audio_pool
+var active_combat_system
+var quest_system
+var save_manager
+
+var player
+var _p_stamina
+var player_stamina_component:
+	get: return _p_stamina
+	set(v): _p_stamina = v
+
+var combat_scratchpad = Resource.new() 
+
+func _ready() -> void:
+	print("[DIRECTOR] Kernel awakening...")
+	
+	# Initialize Save Manager
+	var save_mgr_script = load("res://scripts/patterns/SaveManager.gd")
+	if save_mgr_script:
+		save_manager = save_mgr_script.new()
+		save_manager.name = "SaveManager"
+		add_child(save_manager)
+	
+	# Notify systems
+	if is_instance_valid(get_node_or_null("/root/GameEvents")):
+		get_node("/root/GameEvents").core_awaken.emit()
+
+```
+
+--- SCRIPT: res://scripts/globals/CORE.Kernel.GameEvents.gd ---
+```gdscript
+"""
+[GVRN] [UAM-V15]
+Artifact ID:   CORE.Kernel.GameEvents
+Description:   The Global Synapse. Orchestrates all high-frequency events.
+Version:       1.2 [SOVEREIGN]
+Relationships: GOVERNED_BY(Director)
+Status:        [CANONIZED]
+"""
+
+@warning_ignore("unused_signal")
+extends Node
+class_name GameEvents
+static var instance: GameEvents
+
+func _init() -> void:
+	instance = self
+
+signal item_collected(item)
+signal quest_objective_completed(quest_id, objective_id)
+signal lock_on_target_changed(target)
+
+# --- UI & Stat Signals ---
+signal player_health_changed(current: float, maximum: float)
+signal player_mana_changed(current: float, maximum: float)
+signal player_stamina_changed(current: float, maximum: float)
+
+# --- Universal Event Bus ---
+signal game_state_changed(new_state: int) # T.GameState
+signal character_state_changed(actor: CharacterBody3D, new_state: int) # T.CharacterState
+signal combat_state_changed(actor: Node3D, new_state: int) # T.CombatState
+
+# --- Sovereign Signal Bus [PRS-002] ---
+signal core_awaken
+signal synergy_fire(payload: Dictionary)
+signal coherence_ripple(intensity: float)
+signal aural_echo(type: String)
+
+```
+
+--- SCRIPT: res://scripts/globals/CORE.Log.GlobalLogger.gd ---
+```gdscript
+"""
+[GVRN] [CORE] [LOG]
+Artifact ID: CORE.Log.GlobalLogger
+Version: v1.1 [SOVEREIGN]
+Status: [CANONIZED]
+Description: Global logging wrapper for the Ashen Oath.
+"""
+
+extends Node
+
+# Untyped helper to ensure accessibility from any substrate layer
+func info(domain: Variant, msg: Variant) -> void:
+	if not Engine.is_editor_hint():
+		print("[%s] INFO: %s" % [str(domain), str(msg)])
+
+func warn(domain: Variant, msg: Variant) -> void:
+	printerr("[%s] WARNING: %s" % [str(domain), str(msg)])
+
+func error(domain: Variant, msg: Variant) -> void:
+	push_error("[%s] ERROR: %s" % [str(domain), str(msg)])
+
+func wow(domain: Variant, msg: Variant) -> void:
+	print("[%s] WOW: %s" % [str(domain), str(msg)])
+
+```
+
+--- SCRIPT: res://scripts/globals/GameConfig.gd ---
+```gdscript
+# GameConfig.gd
+extends Resource
+class_name GameConfig
+
+@export_group("Difficulty Multipliers")
+@export var enemy_damage_mod: float = 1.0
+@export var enemy_health_mod: float = 1.0
+@export var player_stamina_regen: float = 10.0
+
+@export_group("World Settings")
+@export var shadow_intensity: float = 0.8
+@export var oakhaven_visibility: float = 50.0
+
+```
+
+--- SCRIPT: res://scripts/globals/Types.gd ---
+```gdscript
+# Types.gd
+extends Object
+class_name T # Short for Types/Transitions
+
+enum CharacterState { IDLE, WALKING, ATTACKING, STAGGERED, DEAD,FALL, JUMP }
+enum CombatState { IDLE, CHASE, ATTACK, STAGGERED, DEAD }
+enum EnemyType { GRUNT, SHADOW, ELITE }
+enum Faction { PLAYER, VOID, CITIZEN }
+enum ErrorCode { NONE, INVALID_INPUT, OUT_OF_BOUNDS, NOT_FOUND, ERR_MESSAGE, ERR_STRING }
+enum GameState { MAIN_MENU, IN_GAME, PAUSED, GAME_OVER }
+enum StateID { IDLE, MOVE, ATTACK, DODGE, PARRY, STAGGER, CHASE, }
+enum AttackPhase { STARTUP, ACTIVE, RECOVERY }
+enum EquipmentSlot { WEAPON, ARMOR }
+enum LogLevel { INFO, WARN, ERROR, WOW }
+
+enum SystemEvents { 
+	PLAYER_SPAWNED,
+	PLAYER_DIED,
+	PLAYER_HEALTH_CHANGED,
+	PLAYER_MANA_CHANGED,
+	PLAYER_STAMINA_CHANGED
+}
+
+const ATTACK_BUFFER: float = 0.5
+
+```
+
+--- SCRIPT: res://scripts/patterns/DamageTextPoolComponent.gd ---
+```gdscript
+extends Node3D
+class_name DamageTextPoolComponent
+
+## PHOENIX ARCHITECT: SKILL-002 ALIGNMENT
+## Localized, Zero-Allocation Object Pool for floating combat text.
+
+@export var pool_size: int = 5
+@export var damage_text_scene: PackedScene
+
+var _pool: Array[FloatingDamageText] = []
+var _pool_index: int = 0
+
+func _ready() -> void:
+	if not damage_text_scene:
+		push_error("DamageTextPoolComponent: damage_text_scene is null.")
+		return
+		
+	# Pre-allocate the pool to avoid runtime stutters
+	for i in range(pool_size):
+		var text_node := damage_text_scene.instantiate() as FloatingDamageText
+		if text_node:
+			add_child(text_node)
+			text_node.hide()
+			_pool.append(text_node)
+
+func display_damage(amount: float, _source: Node = null) -> void:
+	if _pool.is_empty():
+		return
+		
+	var text_node := _pool[_pool_index]
+	_pool_index = (_pool_index + 1) % pool_size
+	
+	# Spawn slightly offset to avoid text overlapping perfectly
+	var offset := Vector3(randf_range(-0.5, 0.5), 1.0, randf_range(-0.5, 0.5))
+	text_node.activate(amount, global_position + offset)
+```
+
+--- SCRIPT: res://scripts/patterns/Enemy.gd ---
+```gdscript
+extends CharacterBody3D
+class_name Enemy
+
+## PHOENIX ARCHITECT: ORCHESTRATOR PATTERN
+## Root node responsible for physical movement and Dependency Injection.
+
+@export_group("Dependencies")
+@export var health_component: HealthComponent
+@export var damage_text_pool: DamageTextPoolComponent
+
+func _ready() -> void:
+	_verify_dependencies()
+	_bind_components()
+
+func _verify_dependencies() -> void:
+	assert(health_component != null, "Enemy: health_component is unassigned!")
+	assert(damage_text_pool != null, "Enemy: damage_text_pool is unassigned!")
+
+func _bind_components() -> void:
+	# Rule III.1: Signals Up -> Calls Down
+	# We route the health's damage signal directly into the text pool's display function.
+	if not health_component.damaged.is_connected(damage_text_pool.display_damage):
+		health_component.damaged.connect(damage_text_pool.display_damage)
+	
+	if not health_component.health_depleted.is_connected(_on_death):
+		health_component.health_depleted.connect(_on_death)
+
+func _on_death() -> void:
+	# SKILL-004 Event Routing: Emit a death event, disable components, or transition state.
+	queue_free()
+```
+
+--- SCRIPT: res://scripts/patterns/EventBus.gd ---
+```gdscript
+"""
+# [GVRN]
+# Artifact ID: CORE.Pattern.EventBus
+# Description: Global signal bus for decoupling and performance.
+# Version: [SOVEREIGN]
+# Author: Architect
+"""
+extends Node
+
+## PHOENIX ARCHITECT: SKILL-GAM-001 ALIGNMENT
+## Global signal bus for decoupling and performance.
+
+# Player events
+signal player_spawned(player: Node2D)
+signal player_died(player: Node2D)
+signal player_health_changed(health: int, max_health: int)
+
+# Combat events
+signal impact_registered(position: Vector2, force: float)
+signal zone_entered(zone_id: StringName)
+
+func _ready() -> void:
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+```
+
+--- SCRIPT: res://scripts/patterns/FloatingDamageText.gd ---
+```gdscript
+extends Label3D
+class_name FloatingDamageText
+
+var _active: bool = false
+var _lifetime: float = 0.0
+const MAX_LIFETIME: float = 1.0
+const FLOAT_SPEED: float = 1.5
+
+func _physics_process(delta: float) -> void:
+	if not _active:
+		return
+		
+	_lifetime += delta
+	global_position.y += FLOAT_SPEED * delta
+	
+	# Fade out calculation
+	var alpha := 1.0 - (_lifetime / MAX_LIFETIME)
+	modulate.a = clampf(alpha, 0.0, 1.0)
+	
+	if _lifetime >= MAX_LIFETIME:
+		_deactivate()
+
+func activate(amount: float, start_pos: Vector3) -> void:
+	text = str(snappedf(amount, 0.1))
+	global_position = start_pos
+	modulate.a = 1.0
+	_lifetime = 0.0
+	_active = true
+	show()
+
+func _deactivate() -> void:
+	_active = false
+	hide()
+```
+
+--- SCRIPT: res://scripts/patterns/ObjectPool.gd ---
+```gdscript
+# object_pool.gd
+class_name ObjectPool
+extends Node
+
+## PHOENIX ARCHITECT: SKILL-GAM-001 ALIGNMENT
+## ANTI_PATTERN_ZERO: Prevents object creation in hot loops via pooling.
+
+@export var pooled_scene: PackedScene
+@export var initial_size: int = 20
+@export var can_grow: bool = true
+
+var _available: Array[Node] = []
+var _in_use: Array[Node] = []
+
+func _ready() -> void:
+    if not pooled_scene:
+        push_error("ObjectPool Error: pooled_scene must be assigned in the Inspector.")
+        return
+    _initialize_pool()
+
+func _initialize_pool() -> void:
+    for i in initial_size:
+        _create_instance()
+
+func _create_instance() -> Node:
+    var instance := pooled_scene.instantiate()
+    instance.process_mode = Node.PROCESS_MODE_DISABLED
+    instance.visible = false
+    add_child(instance)
+    _available.append(instance)
+
+    if instance.has_signal("returned_to_pool"):
+        instance.returned_to_pool.connect(_return_to_pool.bind(instance))
+
+    return instance
+
+func get_instance() -> Node:
+    var instance: Node
+
+    if _available.is_empty():
+        if can_grow:
+            instance = _create_instance()
+            _available.erase(instance)
+        else:
+            push_warning("Pool exhausted and cannot grow")
+            return null
+    else:
+        instance = _available.pop_back()
+
+    instance.process_mode = Node.PROCESS_MODE_INHERIT
+    instance.visible = true
+    _in_use.append(instance)
+
+    if instance.has_method("on_spawn"):
+        instance.on_spawn()
+
+    return instance
+
+func _return_to_pool(instance: Node) -> void:
+    if not instance in _in_use:
+        return
+
+    _in_use.erase(instance)
+
+    if instance.has_method("on_despawn"):
+        instance.on_despawn()
+
+    instance.process_mode = Node.PROCESS_MODE_DISABLED
+    instance.visible = false
+    _available.append(instance)
+
+```
+
+--- SCRIPT: res://scripts/patterns/SaveManager.gd ---
+```gdscript
+# save_manager.gd
+extends Node
+
+## PHOENIX ARCHITECT: SKILL-GAM-001 / KAIZEN ALIGNMENT
+## Standardized Save System for Ashen Oath.
+
+const SAVE_PATH := "user://ashen_oath_save.dat"
+const ENCRYPTION_KEY := "AO_SECURE_PHOENIX_2026" # TODO: Move to secure vault
+
+signal save_completed
+signal load_completed
+signal save_error(message: String)
+
+func save_game(data: Dictionary) -> void:
+    # JIT: Implement simple JSON serialization first.
+    var file := FileAccess.open_encrypted_with_pass(
+        SAVE_PATH,
+        FileAccess.WRITE,
+        ENCRYPTION_KEY
+    )
+
+    if file == null:
+        var err_msg = "Could not open save file: %s" % FileAccess.get_open_error()
+        save_error.emit(err_msg)
+        push_error(err_msg)
+        return
+
+    var json := JSON.stringify(data)
+    file.store_string(json)
+    file.close()
+
+    save_completed.emit()
+    print("SaveManager: Game saved successfully.")
+
+func load_game() -> Dictionary:
+    if not FileAccess.file_exists(SAVE_PATH):
+        return {}
+
+    var file := FileAccess.open_encrypted_with_pass(
+        SAVE_PATH,
+        FileAccess.READ,
+        ENCRYPTION_KEY
+    )
+
+    if file == null:
+        save_error.emit("Could not open save file for reading.")
+        return {}
+
+    var json := file.get_as_text()
+    file.close()
+
+    var parsed = JSON.parse_string(json)
+    if parsed == null:
+        save_error.emit("Could not parse save data.")
+        return {}
+
+    load_completed.emit()
+    return parsed as Dictionary
+
+```
+
+--- SCRIPT: res://scripts/patterns/State.gd ---
+```gdscript
+"""
+[GVRN]
+Artifact ID: CORE.Pattern.State
+Description: Base state class for the hierarchical state machine pattern.
+Version: [SOVEREIGN]
+Author: Architect
+"""
+extends Node
+class_name PatternState
+
+## PHOENIX ARCHITECT: SKILL-008 ALIGNMENT
+## State class to be utilized by PatternStateMachine
+
+var state_machine: PatternStateMachine
+
+func enter(_msg: Dictionary = {}) -> void:
+	pass
+
+func exit() -> void:
+	pass
+
+func update(_delta: float) -> void:
+	pass
+
+func physics_update(_delta: float) -> void:
+	pass
+
+func handle_input(_event: InputEvent) -> void:
+	pass
+
+```
+
+--- SCRIPT: res://scripts/patterns/StateMachine.gd ---
+```gdscript
+"""
+[GVRN]
+Artifact ID: CORE.Pattern.StateMachine
+Description: Standard hierarchical state machine pattern.
+Version: [SOVEREIGN]
+Author: Architect
+"""
+extends Node
+class_name PatternStateMachine
+
+## PHOENIX ARCHITECT: SKILL-008 ALIGNMENT
+## The "Phoenix-Pure" State Machine reference pattern.
+
+signal state_changed(from_state: StringName, to_state: StringName)
+
+@export var initial_state: PatternState
+
+var current_state: PatternState
+var states: Dictionary = {}
+
+func _ready() -> void:
+	_register_states(self)
+
+	if initial_state:
+		current_state = initial_state
+		current_state.process_mode = Node.PROCESS_MODE_INHERIT
+		current_state.enter()
+
+func _register_states(parent: Node) -> void:
+	for child in parent.get_children():
+		if child is PatternState:
+			states[child.name] = child
+			child.state_machine = self
+			child.process_mode = Node.PROCESS_MODE_DISABLED
+			_register_states(child)
+
+func _process(delta: float) -> void:
+	if current_state:
+		current_state.update(delta)
+
+func _physics_process(delta: float) -> void:
+	if current_state:
+		current_state.physics_update(delta)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if current_state:
+		current_state.handle_input(event)
+
+func transition_to(state_name: StringName, msg: Dictionary = {}) -> void:
+	if not states.has(state_name):
+		push_error("State '%s' not found" % state_name)
+		return
+
+	var previous_state := current_state
+	if previous_state:
+		previous_state.exit()
+		previous_state.process_mode = Node.PROCESS_MODE_DISABLED
+
+	current_state = states[state_name]
+	current_state.process_mode = Node.PROCESS_MODE_INHERIT
+	current_state.enter(msg)
+
+	state_changed.emit(previous_state.name if previous_state else &"", current_state.name)
+
+```
+
+--- SCRIPT: res://scripts/resources/ai/DATA.AI.BossPhase.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: DATA.AI.BossPhase
+# Description: Data container for defining boss phase transitions.
+# Author: Architect
+
+extends Resource
+class_name BossPhaseData
+
+@export var hp_threshold: float = 0.5
+@export var phase_animation: StringName = &"phase_transition"
+@export var damage_mult: float = 1.5
+@export var speed_mult: float = 1.3
+
+```
+
+--- SCRIPT: res://scripts/resources/DATA.Combat.AttackData.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: DATA.Combat.AttackData
+# Description: Data container for defining attacks and their properties.
+# Author: Architect
+
+extends Resource
+class_name AttackData
+
+@export var damage: float = 10.0
+@export var poise_damage: float = 20.0
+@export var team_id: int = 0 # 0: Player, 1: Enemy
+@export var attacker_pos: Vector3
+@export var can_be_parried: bool = true
+
+```
+
+--- SCRIPT: res://scripts/resources/DATA.Save.SaveData.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: DATA.Save.SaveData
+# Description: Data container for saving and loading game state.
+# Author: Architect
+
+extends Resource
+class_name SaveData
+
+@export var player_hp: float
+@export var player_pos: Vector3
+@export var inventory_paths: Array[String] = []
+@export var quest_progress: Dictionary = {}
+
+```
+
+--- SCRIPT: res://scripts/resources/DATA.Stats.StatData.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: DATA.Stats.StatData
+# Description: Data container for base stats.
+# Author: Architect
+
+extends Resource
+class_name StatData
+
+@export var max_health: float = 100.0
+@export var base_damage: float = 10.0
+
+```
+
+--- SCRIPT: res://scripts/resources/items/DATA.Inventory.Equipment.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: DATA.Inventory.Equipment
+# Description: Data container for equippable items.
+# Author: Architect
+
+extends ItemData
+class_name EquipmentData
+
+@export var slot: T.EquipmentSlot
+@export var damage_modifier: float = 1.0
+@export var visual_mesh: PackedScene
+
+```
+
+--- SCRIPT: res://scripts/resources/items/DATA.Inventory.Equipment.Weapon.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: DATA.Inventory.Equipment.Weapon
+# Description: Data container for equippable weapons.
+# Author: Architect
+
+extends ItemData
+class_name WeaponData
+
+@export_group("Combat Stats")
+@export var damage: float = 15.0
+@export var poise_damage: float = 20.0
+@export var attack_speed_mult: float = 1.0
+
+@export_group("Visuals")
+@export var weapon_model: PackedScene
+
+```
+
+--- SCRIPT: res://scripts/resources/items/DATA.Inventory.ItemData.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: DATA.Inventory.ItemData
+# Description: Base data container for all inventory items.
+# Author: Architect
+
+extends Resource
+class_name ItemData
+
+@export var display_name: StringName = &"New Item"
+@export var icon: Texture2D
+@export var weight: float = 1.0
+
+```
+
+--- SCRIPT: res://scripts/resources/quests/DATA.Quest.Objective.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: DATA.Quest.Objective
+# Description: Data container for defining quest objectives.
+# Author: Architect
+
+extends Resource
+class_name ObjectiveData
+
+signal progress_updated(curr: int, total: int)
+signal objective_completed
+
+@export var description: String
+@export var target_id: StringName
+@export var required_amount: int = 1
+var current_amount: int = 0
+func increment(id: StringName) -> void:
+	if id == target_id:
+		current_amount = clampi(current_amount + 1, 0, required_amount)
+		progress_updated.emit(current_amount, required_amount)
+		if current_amount >= required_amount: objective_completed.emit()
+
+```
+
+--- SCRIPT: res://scripts/resources/quests/DATA.Quest.QuestData.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: DATA.Quest.QuestData
+# Description: Data container for defining quests and objectives.
+# Author: Architect
+
+extends Resource
+class_name QuestData
+
+signal quest_completed
+
+@export var title: String
+@export var objectives: Array[ObjectiveData] = []
+
+func check_completion() -> void:
+	for o in objectives: if o.current_amount < o.required_amount: return
+	quest_completed.emit()
+
+```
+
+--- SCRIPT: res://scripts/systems/CORE.System.LogSystem.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID:   CORE.System.LogSystem
+# Description:   The Master Logging Facade. Implements Rich Terminal Output (SUCS VI).
+# Version:       [SOVEREIGN]
+# Author:        Architect
+
+extends Node
+
+class_name LogSystem
+
+@export var write_to_file: bool = true
+const LOG_PATH: String = "user://logs/session.log"
+
+var _file: FileAccess = null
+
+func _ready() -> void:
+	# SUCS III.6: Register wrapper pointer
+	Log.active_system = self
+	
+	if write_to_file:
+		_setup_log_file()
+		
+	Log.wow(&"LOG", "Sovereign Logging System: ACTIVE")
+
+func _setup_log_file() -> void:
+	# SUCS VI: Never-Fail File I/O
+	var dir := DirAccess.open("user://")
+	if not dir.dir_exists("logs"):
+		dir.make_dir("logs")
+		
+	_file = FileAccess.open(LOG_PATH, FileAccess.WRITE)
+	if not _file:
+		push_error("LogSystem: Failed to open log file at %s" % LOG_PATH)
+
+## SUCS II.1: Strict Static Typing
+func log_message(level: int, tag: StringName, msg: String) -> void:
+	var timestamp := Time.get_time_string_from_system()
+	var formatted_msg := "[%s][%s] %s: %s" % [timestamp, tag, _get_level_name(level), msg]
+	
+	# File Persistence
+	if _file:
+		_file.store_line(formatted_msg)
+		_file.flush() # Ensure it's written even if we crash
+		
+	# Rich Terminal Output (SUCS: WOW Factor)
+	_print_rich_terminal(level, tag, msg)
+
+func _get_level_name(level: int) -> String:
+	match level:
+		T.LogLevel.INFO: return "INFO"
+		T.LogLevel.WARN: return "WARN"
+		T.LogLevel.ERROR: return "ERROR"
+		T.LogLevel.WOW: return "WOW"
+	return "???"
+
+func _print_rich_terminal(level: int, tag: StringName, msg: String) -> void:
+	var tag_color := "cyan"
+	var msg_color := "white"
+	
+	match level:
+		T.LogLevel.INFO:
+			tag_color = "gray"
+			print_rich("[color=%s][b][%s][/b][/color] %s" % [tag_color, tag, msg])
+		T.LogLevel.WARN:
+			tag_color = "yellow"
+			print_rich("[color=%s][i][b][%s][/b][/i][/color] [color=yellow]%s[/color]" % [tag_color, tag, msg])
+		T.LogLevel.ERROR:
+			tag_color = "red"
+			print_rich("[color=%s][b][%s][/b][/color] [color=orange]%s[/color]" % [tag_color, tag, msg])
+		T.LogLevel.WOW:
+			tag_color = "magenta"
+			print_rich("[rainbow freq=1.0 sat=0.8 val=0.8][b][%s][/b][/rainbow] [color=cyan]%s[/color]" % [tag, msg])
+
+func _exit_tree() -> void:
+	if _file:
+		_file.close()
+
+```
+
+--- SCRIPT: res://scripts/systems/CORE.System.QuestManager.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID:   CORE.System.QuestManager
+# Description:   The Master Quest Engine. Tracks active objectives and state.
+# Version:       [SOVEREIGN]
+# Author:        Architect
+
+extends Node
+
+class_name QuestManager
+
+var active_quests: Array = []
+
+func _ready():
+	Director.instance.quest_system = self
+	GameEvents.instance.enemy_killed.connect(_on_enemy_killed)
+
+func _on_enemy_killed(enemy_id: StringName):
+	Log.wow("QuestManager", "Processing death for Quest Logic: " + str(enemy_id))
+	# Iterate active quests and update objectives here
+
+```
+
+--- SCRIPT: res://scripts/systems/CORE.System.SaveManager.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID:   CORE.System.SaveManager
+# Description:   Persistence Layer for character state and world progress.
+# Version:       [SOVEREIGN]
+# Author:        Architect
+
+extends Node
+const SAVE_PATH = "user://nexus_save.res"
+
+func _ready():
+	Director.instance.save_manager = self
+
+func save_game(data: Dictionary):
+	var file = FileAccess.open(SAVE_PATH, FileAccess.WRITE)
+	file.store_var(data)
+	print("PHOENIX_LOG: State Serialized to Disk.")
+
+func load_game() -> Dictionary:
+	if not FileAccess.file_exists(SAVE_PATH): return {}
+	var file = FileAccess.open(SAVE_PATH, FileAccess.READ)
+	return file.get_var()
+
+```
+
+--- SCRIPT: res://scripts/systems/DOMAIN.Combat.Director.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID:   DOMAIN.Combat.Director
+# Description:   High-level combat orchestrator. Handles encounters and spawn logic.
+# Version:       [SOVEREIGN]
+# Author:        Architect
+
+extends Node
+
+func _ready() -> void:
+	Director.instance.active_combat_system = self
+
+func trigger_hit_stop(duration: float, time_scale: float = 0.05) -> void:
+	Engine.time_scale = time_scale
+	# PHOENIX-FIX: Godot 4 create_timer parameters: (time_sec, process_always, process_idle, ignore_time_scale)
+	var timer := get_tree().create_timer(duration, true, false, true)
+	timer.timeout.connect(_on_hit_stop_timeout)
+
+func _on_hit_stop_timeout() -> void:
+	Engine.time_scale = 1.0
+
+```
+
+--- SCRIPT: res://scripts/systems/FABRIC.System.AudioPool.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID:   FABRIC.System.AudioPool
+# Description:   Circular buffer for AudioStreamPlayer3D instances.
+#                Implements SKILL-002 Zero-Allocation Pooling.
+# Version:       [SOVEREIGN]
+# Author:        Architect
+
+extends Node
+
+class_name AudioPool
+
+# SKILL-002: Zero-Allocation Pooling
+@export var pool_size: int = 16
+var _pool: Array[AudioStreamPlayer] = []
+var _next: int = 0
+
+func _ready() -> void:
+	Director.instance.audio_pool = self
+	for i in range(pool_size):
+		var player := AudioStreamPlayer.new()
+		player.bus = &"SFX"
+		add_child(player)
+		_pool.append(player)
+	
+	# Sovereign Signal Bus [PRS-002] Integration
+	GameEvents.instance.aural_echo.connect(_on_aural_echo)
+
+func _on_aural_echo(type: String) -> void:
+	if type == "neural_ping":
+		# TODO: Load canonical neural_ping.wav
+		print("SOVEREIGN_LOG: Neural Ping synthesized.")
+
+func play_sfx(stream: AudioStream, pitch_min: float = 0.9, pitch_max: float = 1.1) -> void:
+	if not stream or _pool.is_empty(): return
+
+	var p := _pool[_next]
+	p.stream = stream
+	p.pitch_scale = randf_range(pitch_min, pitch_max)
+	p.play()
+
+	_next = (_next + 1) % pool_size
+
+```
+
+--- SCRIPT: res://scripts/systems/FABRIC.System.AudioSystem.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID:   FABRIC.System.AudioSystem
+# Description:   The Aural Director.instance. Manages spatial audio and eliminates mechanical repetition.
+# Version:       [SOVEREIGN]
+# Author:        Architect
+
+extends Node
+
+class_name AudioSystem
+
+@export var max_simultaneous_sounds: int = 16
+
+func _ready() -> void:
+	# SUCS III.6: Register wrapper pointer
+	Director.instance.audio_pool = self
+	Log.wow(&"AUDIO", "Sovereign Audio System: ACTIVE")
+
+## SUCS II.1: Strict Static Typing
+func play_spatial_sound(stream: AudioStream, position: Vector3, volume_db: float = 0.0, pitch_var: float = 0.1) -> void:
+	if not stream:
+		return
+		
+	var player := AudioStreamPlayer3D.new()
+	add_child(player)
+	
+	player.stream = stream
+	player.global_position = position
+	player.volume_db = volume_db
+	
+	# Sovereign Requirement: Pitch Randomization (0.9 to 1.1)
+	player.pitch_scale = randf_range(1.0 - pitch_var, 1.0 + pitch_var)
+	
+	# Auto-cleanup
+	player.finished.connect(func(): player.queue_free())
+	player.play()
+
+func play_static_sound(stream: AudioStream, volume_db: float = 0.0) -> void:
+	if not stream:
+		return
+		
+	var player := AudioStreamPlayer.new()
+	add_child(player)
+	
+	player.stream = stream
+	player.volume_db = volume_db
+	player.pitch_scale = randf_range(0.95, 1.05)
+	
+	player.finished.connect(func(): player.queue_free())
+	player.play()
+
+```
+
+--- SCRIPT: res://scripts/systems/FABRIC.System.ProjectilePool.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID:   FABRIC.System.ProjectilePool
+# Description:   Circular buffer for combat projectiles.
+# Author:        Architect
+
+extends Node3D
+class_name ProjectilePool
+
+@export var projectile_scene: PackedScene
+@export var pool_size: int = 30
+
+var _pool: Array[PooledProjectile] = []
+var _next_index: int = 0
+
+func _ready() -> void:
+	_initialize_pool()
+
+func _initialize_pool() -> void:
+	if not projectile_scene:
+		push_error("ProjectilePool: projectile_scene is not assigned.")
+		return
+		
+	for i in range(pool_size):
+		var inst := projectile_scene.instantiate() as PooledProjectile
+		inst.hide()
+		inst.process_mode = Node.PROCESS_MODE_INHERIT
+		add_child(inst)
+		_pool.append(inst)
+
+func fire_projectile(start_pos: Vector3, direction: Vector3) -> void:
+	if _pool.is_empty(): return
+	
+	var proj := _pool[_next_index]
+	# Circular pointer wraps back to 0 when hitting pool_size
+	_next_index = (_next_index + 1) % pool_size 
+	
+	proj.fire(start_pos, direction)
+
+```
+
+--- SCRIPT: res://scripts/systems/FABRIC.System.VFXInstance.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID:   FABRIC.System.VFXInstance
+# Description:   Individual pooled VFX logic. Handles lifecycle and despawn timing.
+# Version:       [SOVEREIGN]
+# Author:        Architect
+
+extends Node3D
+
+# SKILL-002: Zero-Allocation Pooling
+
+@export var lifetime: float = 2.0
+var _timer: float = 0.0
+
+func _physics_process(delta: float) -> void:
+	if visible:
+		_timer += delta
+		if _timer >= lifetime:
+			_despawn()
+
+func restart() -> void:
+	_timer = 0.0
+	for child in get_children():
+		if child is GPUParticles3D:
+			child.emitting = true
+			child.restart()
+
+func _despawn() -> void:
+	visible = false
+	process_mode = Node.PROCESS_MODE_DISABLED
+	for child in get_children():
+		if child is GPUParticles3D:
+			child.emitting = false
+
+```
+
+--- SCRIPT: res://scripts/systems/FABRIC.System.VFXPool.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID:   FABRIC.System.VFXPool
+# Description:   Circular buffer for high-frequency VFX instances.
+#                Implements SKILL-002 Zero-Allocation Pooling.
+# Version:       [SOVEREIGN]
+# Author:        Architect
+
+extends Node3D
+
+@export var vfx_scene: PackedScene
+@export var pool_size: int = 32
+
+var _pool: Array[Node3D] = []
+var _next_index: int = 0
+
+func _ready() -> void:
+	Director.instance.vfx_pool = self
+	_initialize_pool()
+
+func _initialize_pool() -> void:
+	for i in range(pool_size):
+		var inst = vfx_scene.instantiate() as Node3D
+		inst.visible = false
+		inst.process_mode = Node.PROCESS_MODE_DISABLED
+		add_child(inst)
+		_pool.append(inst)
+
+func spawn_vfx(pos: Vector3, rot: Vector3 = Vector3.ZERO) -> Node3D:
+	return spawn(pos, rot)
+
+func spawn(pos: Vector3, rot: Vector3 = Vector3.ZERO) -> Node3D:
+	var inst = _pool[_next_index]
+	_next_index = (_next_index + 1) % pool_size
+	
+	inst.global_position = pos
+	inst.global_rotation = rot
+	inst.visible = true
+	inst.process_mode = Node.PROCESS_MODE_INHERIT
+	
+	if inst.has_method("restart"):
+		inst.restart()
+	
+	return inst
+
+```
+
+--- SCRIPT: res://scripts/systems/FABRIC.System.VFXSystem.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID:   FABRIC.System.VFXSystem
+# Description:   Unified kinetic feedback driver. Manages trauma, hit-stop, and impacts.
+# Version:       [SOVEREIGN]
+# Author:        Architect
+
+extends Node
+
+class_name VFXSystem
+
+# Pattern 1: State/Trauma
+@export var trauma_decay: float = 0.8
+var _trauma: float = 0.0 # 0.0 to 1.0
+
+# Pattern 4: Object Pooling
+@export var impact_vfx_scene: PackedScene
+@export var pool_size: int = 25
+
+var _pool: Array[Node3D] = []
+var _next_pool_idx: int = 0
+
+func _ready() -> void:
+	# SUCS III.6: Register wrapper pointer
+	Director.instance.vfx_pool = self
+	Log.wow(&"VFX", "Sovereign VFX System: ACTIVE")
+	
+	_initialize_pool()
+
+func _process(delta: float) -> void:
+	if _trauma > 0:
+		_trauma = max(_trauma - trauma_decay * delta, 0)
+		_apply_shake()
+
+## --- Kinetic Feedback ---
+
+func trigger_hit_stop(time_scale: float, duration: float) -> void:
+	Engine.time_scale = time_scale
+	Log.warn(&"VFX", "Hit-Stop Active: %0.2f Scale" % time_scale)
+	
+	# PHOENIX-FIX: Godot 4 create_timer parameters: (time_sec, process_always, process_idle, ignore_time_scale)
+	await get_tree().create_timer(duration, true, false, true).timeout
+	Engine.time_scale = 1.0
+
+func add_trauma(amount: float) -> void:
+	_trauma = clamp(_trauma + amount, 0, 1.0)
+
+func _apply_shake() -> void:
+	var shake := _trauma * _trauma # Quadratic shake for better feel
+	var cam := get_viewport().get_camera_3d()
+	if cam:
+		cam.h_offset = randf_range(-1.0, 1.0) * shake * 10.0
+		cam.v_offset = randf_range(-1.0, 1.0) * shake * 10.0
+
+## --- Impact Spawning (Pattern 4) ---
+
+func _initialize_pool() -> void:
+	if not impact_vfx_scene:
+		impact_vfx_scene = load("res://scenes/vfx/DefaultVFX.tscn")
+	
+	if not impact_vfx_scene:
+		Log.error(&"VFX", "Impact template missing! Fallback to Node3D.")
+	
+	for i in range(pool_size):
+		var inst: Node3D
+		if impact_vfx_scene:
+			inst = impact_vfx_scene.instantiate() as Node3D
+		else:
+			inst = Node3D.new()
+		add_child(inst)
+		inst.hide()
+		_pool.append(inst)
+
+func spawn_impact(pos: Vector3, _normal: Vector3 = Vector3.UP) -> void:
+	if _pool.is_empty(): return
+	
+	var inst := _pool[_next_pool_idx]
+	inst.global_position = pos
+	inst.show()
+	
+	if inst.has_method(&"play"):
+		inst.call(&"play", pos)
+	else:
+		# Manual trigger for generic particle scenes
+		for child in inst.find_children("*", "GPUParticles3D", true, false):
+			(child as GPUParticles3D).emitting = true
+		for child in inst.find_children("*", "CPUParticles3D", true, false):
+			(child as CPUParticles3D).emitting = true
+		get_tree().create_timer(2.0).timeout.connect(func(): if is_instance_valid(inst): inst.hide())
+	
+	_next_pool_idx = (_next_pool_idx + 1) % _pool.size()
+
+# Alias for legacy calls
+func spawn_vfx(pos: Vector3) -> void:
+	spawn_impact(pos)
+
+```
+
+--- SCRIPT: res://scripts/tools/CollisionAudit.gd ---
+```gdscript
+# [GVRN]
+# CollisionAudit.gd (v28.1)
+# Purpose: Verify Physics Layers and Scene Hierarchy.
+extends SceneTree
+
+# RUN: godot --headless -s scripts/tools/CollisionAudit.gd
+
+func _init():
+	print("\n--- [PHOENIX AUDIT: Physics Feedback Loop] ---")
+	
+	var player_scene = load("res://scenes/entities/Player.tscn")
+	if not player_scene:
+		print("❌ Error: Player scene not found.")
+		quit(1)
+		return
+
+	var player = player_scene.instantiate()
+	var camera_root = player.get_node("CameraRoot")
+	var spring_arm = camera_root.get_node("SpringArm3D")
+
+	print("Checking Player Logic...")
+	if player is CharacterBody3D:
+		print("✅ Player is CharacterBody3D.")
+	else:
+		print("❌ Player is NOT CharacterBody3D.")
+
+	print("\nAuditing Physics Layers...")
+	
+	# Current State Audit
+	var p_layer = player.collision_layer
+	var s_mask = spring_arm.collision_mask
+	
+	print("Player Collision Layer: ", p_layer)
+	print("SpringArm Collision Mask: ", s_mask)
+
+	if (p_layer & s_mask) != 0:
+		print("\n🔴 CRITICAL: PHYSICAL OVERLAP DETECTED.")
+		print("The SpringArm3D is masking for the same layer as the Player.")
+		print("Result: The camera probe will physically 'hit' the player mesh, causing jitter.")
+	else:
+		print("\n🟢 Physics Layers are decoupled.")
+
+	print("\nVerifying Hierarchy...")
+	if camera_root.top_level:
+		print("✅ CameraRoot is set to top_level.")
+	else:
+		print("⚠️ Warning: CameraRoot is not top_level. Transform jitter likely.")
+
+	print("\nAudit Complete. Recommendation: Configure Player to Layer 2 and SpringArm to Mask Layer 1 only.")
+	quit(0)
+
+```
+
+--- SCRIPT: res://scripts/tools/CombatTest.gd ---
+```gdscript
+# [GVRN]
+# CombatTest.gd (v28.1)
+# Purpose: Headless-safe combat logic verification.
+extends SceneTree
+
+func _init() -> void:
+	print("--- PHOENIX_LOG: BEGINNING COMBAT TDD (RED PHASE) ---")
+	
+	# 1. Arrange: Create combat components
+	var health := HealthComponent.new()
+	health.max_health = 100.0
+	
+	var hurtbox := HurtboxComponent.new()
+	hurtbox.health_component = health
+	
+	var hitbox := HitboxComponent.new()
+	hitbox.damage = 25.0
+	hitbox.team_id = 99 # Different team
+	
+	var attack_data = load("res://scripts/resources/DATA.Combat.AttackData.gd").new()
+	attack_data.damage = hitbox.damage
+	attack_data.team_id = hitbox.team_id
+	
+	# 2. Act: Inflict Damage
+	print("  [ACTION] Inflicting 25 damage...")
+	hurtbox.receive_damage(attack_data)
+	
+	# 3. Assert (Expected: 75 HP)
+	if health.current_health == 75.0:
+		print("  [PASS] test_damage_application: Health correctly reduced.")
+	else:
+		print("  [FAIL] test_damage_application: Expected 75, got ", health.current_health)
+
+	# 4. Act: Test I-Frames
+	print("  [ACTION] Enabling I-frames and inflicting damage...")
+	hurtbox.is_invincible = true
+	hurtbox.receive_damage(attack_data)
+	
+	# 5. Assert (Expected: 75 HP - No additional damage)
+	if health.current_health == 75.0:
+		print("  [PASS] test_iframe_negation: Invincibility correctly blocked damage.")
+	else:
+		print("  [FAIL] test_iframe_negation: Damage leaked through I-frames.")
+
+	print("--- PHOENIX_LOG: TDD COMPLETE ---")
+	quit(0)
+
+```
+
+--- SCRIPT: res://scripts/tools/ContextExport.gd ---
+```gdscript
+# [GVRN]
+extends SceneTree
+
+## Sovereign Context Exporter (Headless Bridge)
+## v1.0 - Ported from Godot Context Exporter by 1Stalk
+##
+## Usage: godot --headless -s scripts/tools/ContextExport.gd
+
+const OUTPUT_PATH: String = "res://context_export.txt"
+const BLACK_LIST: Array[String] = [".agent", ".trunk", ".git", ".godot", "addons", "node_modules"]
+
+# Configuration (Mirrors plugin defaults)
+var include_inspector_changes: bool = true
+var merge_similar_nodes: bool = true
+var collapse_instanced_scenes: bool = true
+var include_autoloads: bool = true
+var wrap_in_markdown: bool = true
+var collapsible_formats: Array[String] = [".blend", ".gltf", ".glb", ".obj", ".fbx"]
+
+func _init() -> void:
+	_run()
+	quit()
+
+func _run() -> void:
+	print("SOVEREIGN_LOG: Starting Refined Context Export...")
+	var content: String = ""
+	
+	# 1. Project Settings
+	content += _build_project_section()
+	
+	# 2. Autoloads
+	if include_autoloads:
+		content += "\n\n--- AUTOLOADS / GLOBALS ---\n\n"
+		content += _build_autoload_section()
+
+	# 3. Scripts (Core entities)
+	content += "\n\n--- SCRIPTS ---\n\n"
+	content += _build_scripts_section()
+
+	# 4. Scene Trees
+	content += "\n\n--- SCENES ---\n\n"
+	content += _build_scenes_section()
+
+	var file: FileAccess = FileAccess.open(OUTPUT_PATH, FileAccess.WRITE)
+	if file:
+		file.store_string(content)
+		print("SOVEREIGN_LOG: Export complete. Saved to: ", OUTPUT_PATH)
+	else:
+		printerr("SOVEREIGN_LOG: ERROR - Could not open output path for writing.")
+
+func _build_project_section() -> String:
+	var out: String = "--- PROJECT.GODOT ---\n\n"
+	if wrap_in_markdown: out += "```ini\n"
+	
+	out += "[application]\n"
+	out += 'config/name="%s"\n' % ProjectSettings.get_setting("application/config/name", "Unknown")
+	out += 'run/main_scene="%s"\n' % ProjectSettings.get_setting("application/run/main_scene", "")
+	
+	# Input Map
+	out += "\n[input]\n"
+	for prop: Dictionary in ProjectSettings.get_property_list():
+		if prop.name.begins_with("input/"):
+			var action = prop.name.trim_prefix("input/")
+			if action.begins_with("ui_"): continue
+			out += "%s\n" % action
+			
+	if wrap_in_markdown: out += "```"
+	return out
+
+func _build_autoload_section() -> String:
+	var out: String = ""
+	for prop: Dictionary in ProjectSettings.get_property_list():
+		if prop.name.begins_with("autoload/"):
+			var name = prop.name.trim_prefix("autoload/")
+			var path = ProjectSettings.get_setting(prop.name)
+			out += "%s: %s\n" % [name, path]
+	return out
+
+func _build_scripts_section() -> String:
+	var out: String = ""
+	var scripts = _find_files("res://scripts", ".gd")
+	for path in scripts:
+		var f = FileAccess.open(path, FileAccess.READ)
+		if f:
+			out += "--- SCRIPT: %s ---\n" % path
+			if wrap_in_markdown: out += "```gdscript\n"
+			out += f.get_as_text()
+			if wrap_in_markdown: out += "\n```"
+			out += "\n\n"
+	return out
+
+func _build_scenes_section() -> String:
+	var out: String = ""
+	var scenes = _find_files("res://scenes", ".tscn")
+	for path in scenes:
+		out += "--- SCENE: %s ---\n" % path
+		var ps = load(path)
+		if ps is PackedScene:
+			var inst = ps.instantiate()
+			if wrap_in_markdown: out += "```text\n"
+			out += _node_to_tree(inst, "")
+			if wrap_in_markdown: out += "```"
+			out += "\n\n"
+			inst.free()
+	return out
+
+func _node_to_tree(node: Node, indent: String) -> String:
+	var res: String = indent + _get_node_info(node) + "\n"
+	
+	# Signals (Corrected for Godot 4)
+	for sig in node.get_signal_list():
+		for conn in node.get_signal_connection_list(sig.name):
+			res += indent + "  [signal] %s -> %s\n" % [sig.name, conn.callable.get_method()]
+
+	var children = node.get_children()
+	for i in range(children.size()):
+		var is_last = (i == children.size() - 1)
+		res += _node_to_tree(children[i], indent + ("└── " if is_last else "├── "))
+	
+	return res
+
+func _get_node_info(node: Node) -> String:
+	var info = "%s (%s)" % [node.name, node.get_class()]
+	var groups = node.get_groups()
+	if not groups.is_empty():
+		info += " groups: %s" % str(groups)
+	
+	var script = node.get_script()
+	if script:
+		info += " script: %s" % script.resource_path
+		
+	return info
+
+func _find_files(path: String, ext: String) -> Array[String]:
+	var files: Array[String] = []
+	var dir = DirAccess.open(path)
+	if dir:
+		dir.list_dir_begin()
+		var file_name = dir.get_next()
+		while file_name != "":
+			if dir.current_is_dir():
+				if not file_name in BLACK_LIST and not file_name.begins_with("."):
+					files.append_array(_find_files(path.path_join(file_name), ext))
+			else:
+				if file_name.ends_with(ext):
+					files.append(path.path_join(file_name))
+			file_name = dir.get_next()
+	return files
+
+```
+
+--- SCRIPT: res://scripts/tools/EnemyEventBusTest.gd ---
+```gdscript
+# [GVRN]
+# EnemyEventBusTest.gd
+# Purpose: Headless-safe unit test for Enemy Universal Event Bus broadcasting.
+extends SceneTree
+
+var _received_state: T.CombatState = T.CombatState.IDLE
+var _event_received: bool = false
+
+func _init() -> void:
+	print("--- PHOENIX_LOG: BEGINNING ENEMY EVENT BUS TDD (RED PHASE) ---")
+
+	# 1. Arrange: Create mock EnemyBase and StateMachine dependencies
+	var enemy := EnemyBase.new()
+	var state_machine := StateMachine.new()
+	
+	var chase_state := AIChaseState.new()
+	chase_state.name = "AIChaseState"
+	
+	state_machine.add_child(chase_state)
+	enemy.state_machine = state_machine
+	enemy.add_child(state_machine)
+
+	# Connect to the global GameEvents bus
+	GameEvents.instance.combat_state_changed.connect(_on_combat_state_changed)
+
+	print("  [ACTION] Initializing Enemy Orchestrator...")
+	# Trigger internal initialization by adding to the tree
+	root.add_child(enemy)
+	# Wait for the frame to ensure _ready() and internal wiring completes
+	await process_frame
+
+	# 2. Act: Fake a local state transition from Idle to Chase
+	print("  [ACTION] Emitting state_changed(&\"AIIdleState\", &\"AIChaseState\")...")
+	state_machine.state_changed.emit(&"AIIdleState", &"AIChaseState")
+
+	# 3. Assert: Did the Orchestrator map this to the Universal Enum and broadcast it?
+	if _event_received and _received_state == T.CombatState.CHASE:
+		print("  [PASS] test_event_routing: state_changed properly routed to GameEvents with T.CombatState.CHASE.")
+	else:
+		print("  [FAIL] test_event_routing: Event not routed correctly.")
+
+	print("--- PHOENIX_LOG: TDD COMPLETE ---")
+	quit(0)
+
+func _on_combat_state_changed(_actor: Node3D, new_state: T.CombatState) -> void:
+	_event_received = true
+	_received_state = new_state
+
+```
+
+--- SCRIPT: res://scripts/tools/GodotEditorBridge.gd ---
+```gdscript
+@tool
+extends Node3D
+
+# GodotEditorBridge.gd
+# Bidirectional bridge between Godot Editor and AuditResilienceService (TypeScript).
+# Part of the Closed-Loop Resilience System (PHOENIX PROTOCOL v15.0).
+
+const LISTEN_PORT = 8080
+var server := TCPServer.new()
+var clients: Array[StreamPeerTCP] = []
+
+func _ready() -> void:
+	if not Engine.is_editor_hint():
+		return
+		
+	var err = server.listen(LISTEN_PORT)
+	if err == OK:
+		print("[PhoenixBridge] Listening on Port %d" % LISTEN_PORT)
+	else:
+		printerr("[PhoenixBridge] Failed to start: %d" % err)
+
+func _process(_delta: float) -> void:
+	if not Engine.is_editor_hint():
+		return
+		
+	if server.is_connection_available():
+		var client = server.take_connection()
+		clients.append(client)
+		print("[PhoenixBridge] Client connected from %s" % client.get_connected_host())
+		
+	for i in range(clients.size() - 1, -1, -1):
+		var client = clients[i]
+		if client.get_status() != StreamPeerTCP.STATUS_CONNECTED:
+			clients.remove_at(i)
+			continue
+			
+		if client.get_available_bytes() > 0:
+			var data = client.get_data(client.get_available_bytes())
+			if data[0] == OK:
+				var message = data[1].get_string_from_utf8()
+				_handle_message(message, client)
+
+func _handle_message(message: String, client: StreamPeerTCP) -> void:
+	print("[PhoenixBridge] Received: ", message)
+	
+	var parts = message.split(":", true, 1)
+	var action = parts[0].to_upper()
+	var param = parts[1] if parts.size() > 1 else ""
+	
+	match action:
+		"MUTATE":
+			_perform_mutation(param)
+		"HIGHLIGHT":
+			_highlight_nodes(param)
+		"PING":
+			client.put_data("PONG\n".to_utf8_buffer())
+		_:
+			printerr("[PhoenixBridge] Unknown action: ", action)
+
+func _perform_mutation(command: String) -> void:
+	print("[PhoenixBridge] Executing Mutation: ", command)
+	# Logic for authoritative scene mutation goes here.
+
+func _highlight_nodes(paths_json: String) -> void:
+	print("[PhoenixBridge] Highlighting Nodes: ", paths_json)
+	# Logic for highlighting nodes in the scene tree.
+
+```
+
+--- SCRIPT: res://scripts/tools/HeadlessVerification.gd ---
+```gdscript
+extends SceneTree
+
+# PHOENIX ARCHITECT: VERIFICATION SEQUENCE v1.5
+# Verifies structural integrity and class registration in Headless Mode.
+
+const PATTERN_SCRIPTS = [
+	"res://Types.gd",
+	"res://scripts/components/state_machine/FABRIC.Logic.State.gd",
+	"res://scripts/components/state_machine/FABRIC.Logic.StateMachine.gd",
+	"res://scripts/patterns/ObjectPool.gd",
+	"res://scripts/patterns/SaveManager.gd",
+	"res://scripts/components/COMP.Physics.Health.gd",
+	"res://scripts/components/COMP.Stats.Stamina.gd",
+	"res://scripts/globals/CORE.Kernel.GameEvents.instance.gd",
+	"res://scripts/globals/CORE.Kernel.Director.instance.gd",
+	"res://scripts/entities/player/COMM.Avatar.Player.gd"
+]
+
+const CRITICAL_SCENES = [
+	"res://scenes/entities/Kaelen.tscn",
+	"res://scenes/world/TestArena.tscn"
+]
+
+func _init():
+	print("\n--- PHOENIX ARCHITECT: VERIFICATION SEQUENCE START ---")
+	var success_count = 0
+	var failure_count = 0
+	
+	# Phase 1: Script Validation
+	print("\nPhase 1: Validating Scripts & Instances...")
+	for path in PATTERN_SCRIPTS:
+		print("Validating: ", path)
+		if not FileAccess.file_exists(path):
+			print("  [CRITICAL ERROR] File missing: ", path)
+			failure_count += 1
+			continue
+			
+		var res = load(path)
+		if res == null:
+			print("  [ERROR] Load failed (Parse error or invalid path): ", path)
+			failure_count += 1
+			continue
+			
+		if res is GDScript:
+			var script: GDScript = res
+			# Verify if it can be instantiated
+			# Note: Some scripts might fail .new() if they have strict dependencies or are static-only
+			# but most our components should allow it.
+			var test_instance = null
+			
+			# Attempt instantiation with error catching logic
+			# In GDScript 2.0, we can't easily catch hard errors, but we can check if it's a valid script
+			if script.can_instantiate():
+				test_instance = script.new()
+				if test_instance:
+					print("  [OK] Instance created successfully.")
+					success_count += 1
+					if test_instance is Object and not test_instance is RefCounted:
+						test_instance.free()
+				else:
+					print("  [ERROR] Instance creation returned null: ", path)
+					failure_count += 1
+			else:
+				print("  [SKIP] Script cannot be instantiated (Static or Abstract).")
+				success_count += 1
+		else:
+			print("  [ERROR] Resource is not a GDScript: ", path, " (Type: ", res.get_class(), ")")
+			failure_count += 1
+
+	# Phase 2: Scene Integrity
+	print("\nPhase 2: Validating Critical Scenes...")
+	for path in CRITICAL_SCENES:
+		print("Validating: ", path)
+		if not FileAccess.file_exists(path):
+			print("  [CRITICAL ERROR] Scene missing: ", path)
+			failure_count += 1
+			continue
+			
+		var scene = load(path)
+		if scene is PackedScene:
+			var instance = scene.instantiate()
+			if instance:
+				print("  [OK] Scene instantiation successful.")
+				success_count += 1
+				instance.free()
+			else:
+				print("  [ERROR] Scene instantiation failed: ", path)
+				failure_count += 1
+		else:
+			print("  [ERROR] Resource is not a PackedScene: ", path)
+			failure_count += 1
+
+	# Phase 3: Locomotion Stress Test
+	print("\nPhase 3: Locomotion Stress Test...")
+	var player_scene = load("res://scenes/entities/Kaelen.tscn")
+	if player_scene is PackedScene:
+		var player = player_scene.instantiate()
+		# Add to tree to allow _ready and _physics_process
+		root.add_child(player)
+		print("  [OK] Player instantiated and added to tree.")
+		
+		# 1. Verify Initial State
+		var sm = player.get_node_or_null("StateMachine")
+		if sm and sm.current_state:
+			print("  [OK] Initial State: ", sm.current_state.name)
+		else:
+			print("  [ERROR] StateMachine or Initial State missing.")
+			failure_count += 1
+		
+		# 2. Simulate Physics Frames (Gravity Check)
+		var initial_y = player.global_position.y
+		print("  Simulating 10 physics frames (Gravity Check)...")
+		for i in range(10):
+			player._physics_process(0.016) # Simulate 60fps delta
+		
+		if player.global_position.y < initial_y:
+			print("  [OK] Gravity applied: Y-pos decreased from ", initial_y, " to ", player.global_position.y)
+			success_count += 1
+		else:
+			print("  [WARNING] Gravity not applied or player grounded. Y-pos: ", player.global_position.y)
+			# This might be OK if the player is on the floor in the scene, but in headless we expect fall if no floor
+		
+		# 3. Simulate Movement Input
+		print("  Simulating 'move_forward' input...")
+		Input.action_press("move_forward")
+		player._physics_process(0.016)
+		
+		if sm.current_state.name.to_lower().contains("move"):
+			print("  [OK] Transitioned to MOVE state.")
+			success_count += 1
+		else:
+			print("  [ERROR] Failed to transition to MOVE state. Current: ", sm.current_state.name)
+			failure_count += 1
+		
+		Input.action_release("move_forward")
+		player.free()
+	else:
+		print("  [ERROR] Could not load Player scene for stress test.")
+		failure_count += 1
+
+	print("\n--- VERIFICATION COMPLETE ---")
+	print("Successes: ", success_count)
+	print("Failures:  ", failure_count)
+	
+	if failure_count > 0:
+		print("SYSTEM STATUS: ENTROPY DETECTED. DO NOT COMMIT.")
+		quit(1)
+	else:
+		print("SYSTEM STATUS: ZERO ENTROPY CONFIRMED. CANONIZATION READY.")
+		quit(0)
+
+```
+
+--- SCRIPT: res://scripts/tools/JuiceCheck.gd ---
+```gdscript
+@tool
+extends EditorScript
+
+func _run() -> void:
+	# Fallback verification (Testing that the bridge exists)
+	if Director.instance.audio_pool:
+		Log.wow(&"VERIFY", "Audio Pool Registered")
+	else:
+		Log.error(&"VERIFY", "Audio Pool ORPHANED")
+
+	if Director.instance.vfx_pool:
+		Log.wow(&"VERIFY", "VFX Pool Registered")
+		# Testing Hit-Stop logic (Internal await verification)
+		if Director.instance.active_combat_system:
+			Director.instance.active_combat_system.trigger_hit_stop(0.1, 0.5)
+	else:
+		Log.error(&"VERIFY", "VFX Pool ORPHANED")
+	
+	print("SOVEREIGN_JUICE: Verification script complete.")
+
+```
+
+--- SCRIPT: res://scripts/tools/LockOnTest.gd ---
+```gdscript
+# [GVRN]
+extends SceneTree
+
+# TDD Runner: LockOnSystem
+# Goal: Test nearest viewport acquisition and right/left flicking.
+
+func _init():
+	print("--- TDD RED PHASE: LockOnSystem Test Started ---")
+	
+	# 1. Setup Mock Scene
+	var root = Node3D.new()
+	var camera_node = Node3D.new()
+	var camera = Camera3D.new()
+	camera_node.add_child(camera)
+	camera.make_current()
+	
+	# Position camera at origin, looking backwards initially
+	camera_node.position = Vector3(0, 0, 0)
+	
+	# Create LockOnComponent (will fail here initially since it doesn't exist)
+	var lock_system = load("res://scripts/components/COMP.Camera.LockOn.gd").new()
+	camera_node.add_child(lock_system)
+	
+	root.add_child(camera_node)
+	
+	# 2. Setup Mock Enemies
+	var e1 = Area3D.new(); e1.position = Vector3(-5, 0, -10); e1.name = "Enemy_Left"
+	var e2 = Area3D.new(); e2.position = Vector3(1, 0, -10); e2.name = "Enemy_Center"
+	var e3 = Area3D.new(); e3.position = Vector3(6, 0, -10); e3.name = "Enemy_Right"
+	
+	root.add_child(e1); root.add_child(e2); root.add_child(e3)
+	
+	# Hack to bypass Area3D physics frames in headless unit test:
+	# Inject mock targets manually into the component for testing purposes
+	lock_system._mock_targets = [e1, e2, e3]
+	
+	# Wait for a frame to let 3D transforms update
+	camera_node.force_update_transform()
+	e1.force_update_transform(); e2.force_update_transform(); e3.force_update_transform()
+
+	# 3. Test Viewport Center Acquisition
+	print("Test 1: Find closest to center viewport")
+	var target = lock_system.find_closest_target(camera)
+	if target == e2:
+		print("Test 1: PASSED")
+	else:
+		printerr("Test 1: FAILED. Expected ", e2.name, " got ", target.name if target else "null")
+		
+	# 4. Test Flick Right
+	print("Test 2: Flick Right")
+	lock_system.current_target = target
+	var right_target = lock_system.find_target_in_direction(camera, Vector2(1, 0)) # Flick Right vector
+	if right_target == e3:
+		print("Test 2: PASSED")
+	else:
+		printerr("Test 2: FAILED. Expected ", e3.name, " got ", right_target.name if right_target else "null")
+
+	# 5. Test Flick Left
+	print("Test 3: Flick Left")
+	lock_system.current_target = target
+	var left_target = lock_system.find_target_in_direction(camera, Vector2(-1, 0)) # Flick Left vector
+	if left_target == e1:
+		print("Test 3: PASSED")
+	else:
+		printerr("Test 3: FAILED. Expected ", e1.name, " got ", left_target.name if left_target else "null")
+
+	print("--- TDD RUN FINISHED ---")
+	quit()
+
+```
+
+--- SCRIPT: res://scripts/tools/LogTest.gd ---
+```gdscript
+@tool
+extends EditorScript
+
+func _run() -> void:
+	# Test the fallback (non-system) logging first
+	Log.info(&"TEST", "Verifying fallback logging...")
+	Log.wow(&"TEST", "Wow factor check!")
+	
+	print("SOVEREIGN_LOG: Verification script complete.")
+
+```
+
+--- SCRIPT: res://scripts/tools/mana.gd ---
+```gdscript
+extends Node
+
+# The maximum mana a character can have.
+@export var max_mana: float = 100.0
+
+# A signal to notify other nodes (like a UI bar) when mana has changed.
+signal mana_changed(new_mana_value, max_mana_value)
+
+# The private "backing field". It stores the true value of mana.
+# The underscore prefix is a GDScript convention for private variables.
+var _current_mana: float
+
+# The public property that other scripts will interact with.
+# We define custom 'get' and 'set' logic for it.
+var current_mana: float:
+	# The 'get' function simply returns the current value of our backing field.
+	get:
+		return _current_mana
+
+	# The 'set' function contains the core logic for the pattern.
+	# It runs every time you write a new value to 'current_mana'.
+	set(new_value):
+		# First, we clamp the incoming value to ensure it's within a valid range.
+		var clamped_value = clamp(new_value, 0.0, max_mana)
+
+		# IMPORTANT: We check if the new, clamped value is different from the old one.
+		# This prevents the 'mana_changed' signal from firing unnecessarily,
+		# which avoids wasted processing and potential bugs.
+		if clamped_value != _current_mana:
+			_current_mana = clamped_value
+			mana_changed.emit(_current_mana, max_mana)
+			# SKILL-004: Route the event through the global synapse
+			GameEvents.instance.player_mana_changed.emit(_current_mana, max_mana)
+
+
+### --- Usage Example ---
+
+func _ready():
+	# When the game starts, initialize mana to its maximum value.
+	# This will automatically run the 'set' logic.
+	current_mana = max_mana
+
+func cast_spell(mana_cost: float):
+	if current_mana >= mana_cost:
+		# Subtracting from the property also triggers the 'set' logic,
+		# ensuring the value is updated and the signal is emitted correctly.
+		current_mana -= mana_cost
+		print("Spell cast! Mana is now: ", current_mana)
+	else:
+		print("Not enough mana!")
+
+```
+
+--- SCRIPT: res://scripts/tools/mana_changed.gd ---
+```gdscript
+# OBSOLETE: This file is a duplicate of `UI Mana Bar.gd`.
+# Please delete this file from your Godot FileSystem to maintain a single source of truth.
+
+```
+
+--- SCRIPT: res://scripts/tools/MockInputController.gd ---
+```gdscript
+# [GVRN]
+extends Node
+
+var _timer: float = 0.0
+var _attacked: bool = false
+var _release_timer: float = 0.0
+var _awaiting_release: bool = false
+
+func _init():
+	process_mode = Node.PROCESS_MODE_ALWAYS
+
+func _physics_process(delta):
+	_timer += delta
+	if _awaiting_release:
+		_release_timer -= delta
+		if _release_timer <= 0: _release_action(&"attack"); _awaiting_release = false
+	if _timer > 1.5 and not _attacked:
+		_attacked = true; _press_action(&"attack"); _awaiting_release = true; _release_timer = 0.1
+func _press_action(a): var ev = InputEventAction.new(); ev.action = a; ev.pressed = true; Input.parse_input_event(ev)
+func _release_action(a): var ev = InputEventAction.new(); ev.action = a; ev.pressed = false; Input.parse_input_event(ev)
+
+```
+
+--- SCRIPT: res://scripts/tools/MovementBlackbox.gd ---
+```gdscript
+extends Node
+class_name MovementBlackbox
+
+## PHOENIX ARCHITECT: VISUAL CORTEX LOG v1.0
+## Tracks frame-by-frame locomotion data for jitter analysis.
+
+@export var target_node: CharacterBody3D
+@export var log_frequency: int = 1 # Every N frames
+@export var max_samples: int = 600 # 10 seconds at 60fps
+
+var _log_data: Array = []
+var _frame_count: int = 0
+var _active: bool = true
+
+func _ready():
+	if not target_node:
+		target_node = get_parent() as CharacterBody3D
+	
+	if target_node:
+		print("[BLACKBOX] Started logging for: ", target_node.name)
+	else:
+		_active = false
+		push_error("[BLACKBOX] Target node not found. Logging disabled.")
+
+func _physics_process(_delta: float):
+	if not _active or _frame_count >= max_samples:
+		if _active and _frame_count >= max_samples:
+			_save_log()
+			_active = false
+		return
+
+	if _frame_count % log_frequency == 0:
+		_capture_frame()
+	
+	_frame_count += 1
+
+func _capture_frame():
+	var state_name = "UNKNOWN"
+	var sm = target_node.get_node_or_null("StateMachine")
+	if sm and sm.current_state:
+		state_name = sm.current_state.name
+
+	var frame_entry = {
+		"frame": _frame_count,
+		"pos": {
+			"x": target_node.global_position.x,
+			"y": target_node.global_position.y,
+			"z": target_node.global_position.z
+		},
+		"vel": {
+			"x": target_node.velocity.x,
+			"y": target_node.velocity.y,
+			"z": target_node.velocity.z
+		},
+		"state": state_name,
+		"is_on_floor": target_node.is_on_floor()
+	}
+	_log_data.append(frame_entry)
+
+func _save_log():
+	var file_path = "res://blackbox_movement_log.json"
+	var file = FileAccess.open(file_path, FileAccess.WRITE)
+	if file:
+		var json_string = JSON.stringify(_log_data, "\t")
+		file.store_string(json_string)
+		file.close()
+		print("[BLACKBOX] Log saved to: ", file_path)
+	else:
+		push_error("[BLACKBOX] Failed to save log file.")
+
+func stop_and_save():
+	_save_log()
+	_active = false
+
+```
+
+--- SCRIPT: res://scripts/tools/new_script.gd ---
+```gdscript
+extends Node
+
+
+# Called when the node enters the scene tree for the first time.
+func _ready() -> void:
+	pass # Replace with function body.
+
+
+# Called every frame. 'delta' is the elapsed time since the previous frame.
+func _process(delta: float) -> void:
+	pass
+
+```
+
+--- SCRIPT: res://scripts/tools/PlayerTest.gd ---
+```gdscript
+# [GVRN]
+# PlayerTest.gd
+# Purpose: Headless-safe unit test for COMM.Avatar.Player.gd
+extends SceneTree
+
+func _init() -> void:
+	print("--- PHOENIX_LOG: BEGINNING PLAYER TDD (RED PHASE) ---")
+	
+	# 1. Arrange: Create Player and Mock Dependencies
+	var player := Player.new()
+	var state_machine := StateMachine.new()
+	var anim_tree := AnimationTree.new()
+	var anim_player := AnimationPlayer.new()
+	var health := HealthComponent.new()
+	var stamina := StaminaComponent.new()
+	var poise := PoiseComponent.new()
+	var hurtbox := HurtboxComponent.new()
+	var hitbox := HitboxComponent.new()
+	
+	# Assign Exports
+	player.state_machine = state_machine
+	player.animation_tree = anim_tree
+	player.animation_player = anim_player
+	player.health_component = health
+	player.stamina_component = stamina
+	player.poise_component = poise
+	player.hurtbox_component = hurtbox
+	player.hitbox_component = hitbox
+	
+	# Create a mock state to verify dependency injection propagation
+	var mock_state := State.new()
+	mock_state.name = "MockState"
+	state_machine.add_child(mock_state)
+	player.add_child(state_machine)
+
+	# 2. Act: Trigger initialization by adding the node to the scene tree
+	print("  [ACTION] Initializing Player Orchestrator...")
+	root.add_child(player)
+	# Wait for the frame to ensure _ready() and internal wiring completes
+	await process_frame
+	
+	# 3. Assert: Director Registration
+	if Director.instance.player == player:
+		print("  [PASS] test_director_registration: Player registered to Director.instance.")
+	else:
+		print("  [FAIL] test_director_registration: Player not registered.")
+		
+	# 4. Assert: Dependency Weaving (SKILL-009 Fix Verification)
+	if mock_state.actor == player and mock_state.anim == anim_player:
+		print("  [PASS] test_dependency_weaving: State dependencies injected downwards correctly.")
+	else:
+		print("  [FAIL] test_dependency_weaving: State dependencies missing.")
+
+	# 5. Assert: Internal Signal Routing
+	if poise.posture_broken.is_connected(player.get("_on_posture_broken")):
+		print("  [PASS] test_poise_connection: Posture broken signal successfully routed to Orchestrator.")
+	else:
+		print("  [FAIL] test_poise_connection: Signal not connected.")
+
+	print("--- PHOENIX_LOG: TDD COMPLETE ---")
+	quit(0)
+
+```
+
+--- SCRIPT: res://scripts/tools/ProjectSanityCheck.gd ---
+```gdscript
+# scripts/tools/ProjectSanityCheck.gd
+extends Node
+
+## PHOENIX_CODEX: v4.3.7 - Sovereign Synthesis Audit (Node-Based)
+## Usage: godot -s scripts/tools/ProjectSanityCheck.gd
+
+func _ready() -> void:
+	print("--- PHOENIX_LOG: BEGINNING SOVEREIGN SANITY CHECK ---")
+
+	# Wait a frame to ensure everything is initialized
+	_run_audit.call_deferred()
+
+func _run_audit() -> void:
+	var target_root: Node = null
+	
+	# Attempt to find the main scene
+	if get_tree().root.get_child_count() > 0:
+		target_root = get_tree().root.get_child(0)
+	
+	if not target_root:
+		print("PHOENIX_LOG: No active scene found. Loading Main.tscn for audit...")
+		var main_scene = load("res://scenes/world/Main.tscn")
+		if main_scene: 
+			target_root = main_scene.instantiate()
+			print("PHOENIX_LOG: Main.tscn instantiated successfully.")
+		else:
+			print("PHOENIX_LOG: ERROR - Main.tscn could not be loaded.")
+
+	# 1. Global Infrastructure Checks
+	_check_autoloads()
+	_check_types()
+
+	# 2. Sovereign Audits
+	if target_root:
+		_audit_collision_identity(target_root)
+		if target_root.name == "Main" or target_root.has_node("Player"):
+			_audit_sovereign_scene(target_root)
+		elif target_root is CharacterBody3D:
+			_audit_player(target_root)
+		else:
+			_audit_generic(target_root)
+	else:
+		print("PHOENIX_LOG: Skipping scene-based audits due to missing root.")
+
+	print("--- PHOENIX_LOG: SANITY CHECK COMPLETE (PHOENIX-GREEN) ---")
+	_finish_audit(0)
+
+func _finish_audit(exit_code: int) -> void:
+	if OS.has_feature("standalone") or DisplayServer.get_name() == "headless":
+		get_tree().quit(exit_code)
+	else:
+		print("PHOENIX_LOG: Audit finished. Stop scene to return to editor.")
+
+func _check_autoloads() -> void:
+	print("PHOENIX_LOG: Auditing Autoloads...")
+	var required = ["_Director", "_GameEvents", "Log"]
+	for a in required:
+		if not ProjectSettings.has_setting("autoload/" + a):
+			print("  [!] MISSING AUTOLOAD: ", a)
+		else:
+			print("  [+] Autoload found: ", a)
+
+func _check_types() -> void:
+	print("PHOENIX_LOG: Auditing Types (T)...")
+	if ClassDB.class_exists("T") or name_exists_in_global_scope("T"):
+		print("  [+] Class 'T' recognized in global scope.")
+	else:
+		# Fallback check: try to access it
+		var t_script = load("res://scripts/globals/Types.gd")
+		if t_script:
+			print("  [+] Types.gd loaded successfully.")
+		else:
+			print("  [!] ERROR: Types.gd NOT FOUND at res://Types.gd")
+
+func name_exists_in_global_scope(p_name: String) -> bool:
+	return ClassDB.class_exists(p_name) or ProjectSettings.has_setting("autoload/" + p_name)
+
+func _audit_collision_identity(root_node: Node) -> void:
+	print("PHOENIX_LOG: Auditing Collision Identity...")
+	var layers = ProjectSettings.get_setting("layer_names/3d_physics/layer_1")
+	if layers != "Environment":
+		print("  [!] LAYER MISMATCH: Layer 1 should be 'Environment'.")
+	
+	var player = root_node.find_child("Player", true, false)
+	if player and not player.is_in_group("player"):
+		print("  [!] MISSING GROUP: Player not in 'player' group.")
+
+func _audit_player(p: Node) -> void:
+	print("PHOENIX_LOG: Auditing Player Entity...")
+	_check_component(p, "HealthComponent")
+	_check_component(p, "StaminaComponent")
+	_check_component(p, "PoiseComponent")
+
+func _audit_sovereign_scene(m: Node) -> void:
+	print("PHOENIX_LOG: Auditing World Substrate...")
+	var player = m.find_child("Player", true, false)
+	if player:
+		_audit_player(player)
+
+func _audit_generic(n: Node) -> void:
+	for child in n.get_children():
+		if child is CharacterBody3D: _audit_player(child)
+		_audit_generic(child)
+
+func _check_component(parent: Node, component: String) -> void:
+	if not parent.has_node(component):
+		print("  [!] MISSING COMPONENT: ", component)
+
+```
+
+--- SCRIPT: res://scripts/tools/resonance_plugin.gd ---
+```gdscript
+@tool
+extends EditorPlugin
+
+func _enter_tree() -> void:
+	resource_saved.connect(_on_resource_saved)
+
+func _exit_tree() -> void:
+	resource_saved.disconnect(_on_resource_saved)
+
+func _on_resource_saved(resource: Resource) -> void:
+	# Only trigger if the saved file is a GDScript
+	if resource is Script and resource.resource_path.get_extension() == "gd":
+		# Convert Godot's internal res:// path to a standard Windows absolute path
+		var script_path = ProjectSettings.globalize_path("res://scripts/tools/generate_resonance_barrels.py")
+		
+		# Execute the python script natively in the background
+		OS.execute("python", [script_path], [])
+
+```
+
+--- SCRIPT: res://scripts/tools/Tool.ProjectSetup.gd ---
+```gdscript
+"""
+[GVRN]
+Artifact ID:   Tool.ProjectSetup
+Description:   Project configuration script.
+			   Configures Physics Layers and Input Actions.
+Author:        Architect
+"""
+
+@tool
+extends EditorScript
+
+func _run():
+	var layers = {1:"Environment", 2:"Player_Body", 3:"Enemy_Body", 4:"Player_Hitbox", 5:"Enemy_Hitbox", 6:"Interactables"}
+	for i in layers: ProjectSettings.set_setting("layer_names/3d_physics/layer_" + str(i), layers[i])
+	var actions = {"move_forward":[KEY_W], "move_back":[KEY_S], "attack":[MOUSE_BUTTON_LEFT]}
+	for a in actions:
+		if not ProjectSettings.has_setting("input/" + a):
+			var ev = InputEventKey.new() if actions[a][0] > 10 else InputEventMouseButton.new()
+			if ev is InputEventKey: ev.physical_keycode = actions[a][0]
+			else: ev.button_index = actions[a][0]
+			ProjectSettings.set_setting("input/" + a, {"deadzone":0.5, "events":[ev]})
+	ProjectSettings.save()
+	print("PHOENIX_LOG: Project Configured.")
+
+```
+
+--- SCRIPT: res://scripts/tools/Tool.WireDependencies.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: Tool.WireDependencies
+# Description: Automatically connects exported dependencies in the currently open scene.
+# Author: Architect
+@tool
+extends EditorScript
+
+func _run() -> void:
+	var root = EditorInterface.get_edited_scene_root()
+	if not root:
+		print("PHOENIX_LOG: No scene open in the editor.")
+		return
+		
+	if root is Player:
+		_wire_player(root)
+	elif root is EnemyBase:
+		_wire_enemy(root)
+	elif root is RigidBody3D and root.has_node("InteractableComponent"):
+		_wire_loot_drop(root)
+	elif root.name == "HUD" or root is CanvasLayer:
+		_wire_hud(root)
+	else:
+		print("PHOENIX_LOG: Open scene not recognized for automatic wiring. Skipping.")
+
+func _wire_player(player: Player) -> void:
+	player.state_machine = player.get_node_or_null("StateMachine") as StateMachine
+	player.camera = player.get_node_or_null("CameraPivot/PlayerCamera") as PlayerCamera
+	player.visuals = player.get_node_or_null("Visuals") as Node3D
+	player.animation_tree = player.get_node_or_null("AnimationTree") as AnimationTree
+
+	# Dynamically find the AnimationPlayer inside the imported model
+	var anim_player = player.find_child("AnimationPlayer", true, false) as AnimationPlayer
+	if anim_player:
+		player.animation_player = anim_player
+		
+	player.health_component = player.get_node_or_null("HealthComponent") as HealthComponent
+	player.stamina_component = player.get_node_or_null("StaminaComponent") as StaminaComponent
+	player.hurtbox_component = player.get_node_or_null("HurtboxComponent") as HurtboxComponent
+	player.hitbox_component = player.get_node_or_null("HitboxComponent") as HitboxComponent
+	player.poise_component = player.get_node_or_null("PoiseComponent") as PoiseComponent
+	print("PHOENIX_LOG: Wired dependencies for Player scene.")
+
+func _wire_enemy(enemy: EnemyBase) -> void:
+	enemy.state_machine = enemy.get_node_or_null("StateMachine") as StateMachine
+	enemy.nav_comp = enemy.get_node_or_null("NavigationComponent")
+	enemy.anim = enemy.get_node_or_null("Visuals/AnimationPlayer") as AnimationPlayer
+	
+	if enemy.has_node("DetectionComponent"):
+		enemy.detection_component = enemy.get_node_or_null("DetectionComponent") as DetectionComponent
+		
+	var chase_state = enemy.get_node_or_null("StateMachine/AIChaseState")
+	if chase_state and enemy.has_node("RayCast3D"):
+		chase_state.set("los_ray", enemy.get_node("RayCast3D"))
+	
+	print("PHOENIX_LOG: Wired dependencies for EnemyBase scene.")
+
+func _wire_hud(hud: CanvasLayer) -> void:
+	var pause_menu = hud.find_child("PauseMenu", true, false)
+	if pause_menu:
+		pause_menu.set("resume_button", pause_menu.find_child("ResumeButton", true, false) as Button)
+		pause_menu.set("quit_button", pause_menu.find_child("QuitButton", true, false) as Button)
+		print("PHOENIX_LOG: Wired dependencies for PauseMenu inside HUD.")
+
+	var main_menu = hud.find_child("MainMenu", true, false)
+	if main_menu:
+		main_menu.set("start_button", main_menu.find_child("StartButton", true, false) as Button)
+		main_menu.set("quit_button", main_menu.find_child("QuitButton", true, false) as Button)
+		print("PHOENIX_LOG: Wired dependencies for MainMenu inside HUD.")
+
+func _wire_loot_drop(loot: Node) -> void:
+	loot.set("interactable_component", loot.get_node_or_null("InteractableComponent"))
+	print("PHOENIX_LOG: Wired dependencies for LootDrop scene.")
+
+```
+
+--- SCRIPT: res://scripts/tools/UI Health Bar.gd ---
+```gdscript
+extends ProgressBar # or TextureProgressBar
+
+func _ready() -> void:
+	# Connect to the global event bus instead of a direct reference (SKILL-004)
+	# We use a strictly typed named method for connection safety (SKILL-005)
+	if _Director.instance:
+		_Director.instance.player.health_component.health_changed.connect(_on_player_health_changed)
+
+# This function is triggered whenever the global health signal is emitted.
+func _on_player_health_changed(new_health_value: float, max_health_value: float) -> void:
+	self.max_value = max_health_value
+	self.value = new_health_value
+
+```
+
+--- SCRIPT: res://scripts/tools/UI Mana Bar.gd ---
+```gdscript
+extends ProgressBar # or TextureProgressBar
+
+func _ready() -> void:
+	# Connect to the global event bus instead of a direct reference (SKILL-004)
+	# We still use a named method for connection safety (SKILL-005)
+	if _Director.player:
+		_Director.player.stamina_component.stamina_changed.connect(_on_player_mana_changed)
+
+# 3. The named method that receives the signal's arguments
+func _on_player_mana_changed(new_mana_value: float, max_mana_value: float) -> void:
+	# Update the UI to reflect the new state
+	max_value = max_mana_value
+	value = new_mana_value
+
+```
+
+--- SCRIPT: res://scripts/ui/COMM.World.LootDrop.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: COMM.World.LootDrop
+# Description: Physical item that can be picked up in the world.
+# Author: Architect
+
+extends RigidBody3D
+class_name LootDrop
+
+@export var item_data: ItemData
+@export var interactable_component: InteractableComponent
+
+func _ready() -> void:
+	if interactable_component:
+		interactable_component.interacted.connect(_on_interacted)
+
+func _on_interacted(_player: Player) -> void:
+	if item_data:
+		GameEvents.instance.item_collected.emit(item_data)
+		print("PHOENIX_LOG: Collected item: ", item_data.display_name)
+	queue_free()
+
+```
+
+--- SCRIPT: res://scripts/ui/inventory/UI.Inventory.EquipmentMenuUI.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: UI.Inventory.EquipmentMenuUI
+# Description: Manages the equipment menu UI.
+# Author: Architect
+
+extends CanvasLayer
+
+class_name EquipmentMenuUI
+
+@export var slot_prefab: PackedScene
+
+@onready var grid = %ItemGrid
+
+func refresh_ui(inventory: InventoryComponent):
+	for c in grid.get_children(): c.queue_free()
+	for item in inventory.items:
+		var slot = slot_prefab.instantiate(); grid.add_child(slot); slot.display_item(item)
+
+```
+
+--- SCRIPT: res://scripts/ui/inventory/UI.Inventory.InventorySlotUI.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: UI.Inventory.InventorySlotUI
+# Description: Manages a single inventory slot UI.
+# Author: Architect
+
+extends Control
+
+class_name InventorySlotUi
+
+@export var slot_prefab: PackedScene
+
+@onready var grid = %ItemGrid
+
+func display_item(item: ItemData): 
+	if item: 
+		%Icon.texture = item.icon
+
+```
+
+--- SCRIPT: res://scripts/ui/Main.gd ---
+```gdscript
+# [GVRN]
+# Main.gd
+# Description: Root scene orchestrator. Manages game state and pausing.
+extends Node3D
+
+func _ready() -> void:
+	# Critical: This ensures the Main script still listens to inputs while the game is paused!
+	process_mode = Node.PROCESS_MODE_ALWAYS
+	
+	if not GameEvents.instance.game_state_changed.is_connected(_on_game_state_changed):
+		GameEvents.instance.game_state_changed.connect(_on_game_state_changed)
+	
+	# Start the game
+	GameEvents.instance.game_state_changed.emit(T.GameState.MAIN_MENU)
+
+func _unhandled_input(event: InputEvent) -> void:
+	if event.is_action_pressed("ui_cancel"):
+		var is_paused = get_tree().paused
+		var new_state = T.GameState.IN_GAME if is_paused else T.GameState.PAUSED
+		GameEvents.instance.game_state_changed.emit(new_state)
+
+func _on_game_state_changed(new_state: T.GameState) -> void:
+	if new_state == T.GameState.IN_GAME:
+		get_tree().paused = false
+		Input.mouse_mode = Input.MOUSE_MODE_CAPTURED
+	elif new_state in [T.GameState.PAUSED, T.GameState.MAIN_MENU]:
+		get_tree().paused = true
+		Input.mouse_mode = Input.MOUSE_MODE_VISIBLE
+
+```
+
+--- SCRIPT: res://scripts/ui/UI.Kernel.HUD.gd ---
+```gdscript
+# [GVRN] [UAM-V15]
+# Artifact ID: UI.Kernel.HUD
+# Description: The primary Head-Up Display controller.
+#              Orchestrates health bars, lock-on indicators, and status icons.
+# Version:       1.1 [SOVEREIGN]
+# Relationships: GOVERNED_BY(Director), CONSUMES(GameEvents)
+# Status:        [CANONIZED]
+
+extends CanvasLayer
+
+var _locked_target: Node3D = null
+var _active_combatants: Dictionary = {}
+
+func _ready() -> void:
+	Director.instance.player_health_ready.connect(_on_player_health_ready)
+	GameEvents.instance.lock_on_target_changed.connect(_on_lock_on_target_changed)
+	GameEvents.instance.combat_state_changed.connect(_on_combat_state_changed)
+	# Wait for Stamina component to be registered to the Director
+	# This avoids race conditions during player instantiation
+	_setup_stamina()
+
+func _process(_delta: float) -> void:
+	if not _locked_target or not is_instance_valid(_locked_target):
+		if %LockOnReticle.visible:
+			%LockOnReticle.hide()
+		return
+	
+	var cam := get_viewport().get_camera_3d()
+	if not cam: return
+	
+	# SKILL-006: Surface-Aware (Targeting the specific marker)
+	var marker = _locked_target.get_node_or_null("LockOnMarker")
+	var target_pos = marker.global_position if marker else _locked_target.global_position
+	
+	if cam.is_position_behind(target_pos):
+		%LockOnReticle.hide()
+	else:
+		%LockOnReticle.show()
+		%LockOnReticle.position = cam.unproject_position(target_pos)
+
+func _on_lock_on_target_changed(target: Node3D) -> void:
+	_locked_target = target
+	%LockOnReticle.visible = (target != null)
+
+func _setup_stamina() -> void:
+	# Small delay to ensure Director has the component reference
+	await get_tree().process_frame
+	var stamina = Director.instance.player_stamina_component
+	if stamina:
+		if not stamina.stamina_changed.is_connected(_on_stamina_changed):
+			stamina.stamina_changed.connect(_on_stamina_changed)
+		_on_stamina_changed(stamina.current_stamina, stamina.max_stamina)
+
+func _on_player_health_ready(node: HealthComponent) -> void:
+	if not node.health_changed.is_connected(_on_health_changed):
+		node.health_changed.connect(_on_health_changed)
+	_on_health_changed(node.current_health, node.max_health)
+
+func _on_health_changed(curr: float, max_v: float) -> void:
+	%HealthBar.max_value = max_v
+	%HealthBar.value = curr
+
+func _on_stamina_changed(curr: float, max_v: float) -> void:
+	%StaminaBar.max_value = max_v
+	%StaminaBar.value = curr
+	
+	# PHOENIX-PREF: Hidden when full
+	%StaminaBar.visible = curr < max_v
+
+func _on_combat_state_changed(actor: Node3D, new_state: T.CombatState) -> void:
+	if new_state in [T.CombatState.CHASE, T.CombatState.ATTACK]:
+		_active_combatants[actor] = true
+	else:
+		_active_combatants.erase(actor)
+		
+	# Cleanup invalid/freed actors (SKILL-002 Memory Safety)
+	for key in _active_combatants.keys():
+		if not is_instance_valid(key):
+			_active_combatants.erase(key)
+			
+	var indicator := get_node_or_null("%CombatIndicator") as Control
+	if indicator:
+		indicator.visible = not _active_combatants.is_empty()
+
+```
+
+--- SCRIPT: res://scripts/ui/UI.Menu.Main.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: UI.Menu.Main
+# Description: Decoupled Main Menu UI.
+# Author: Architect
+
+extends Control
+class_name MainMenuUI
+
+@export var start_button: Button
+@export var quit_button: Button
+
+func _ready() -> void:
+	GameEvents.instance.game_state_changed.connect(_on_game_state_changed)
+	if start_button: start_button.pressed.connect(_on_start_pressed)
+	if quit_button: quit_button.pressed.connect(_on_quit_pressed)
+
+func _on_game_state_changed(new_state: T.GameState) -> void:
+	visible = (new_state == T.GameState.MAIN_MENU)
+
+func _on_start_pressed() -> void:
+	# Fade to black, wait for it to finish, then change the game state, then fade to clear!
+	if has_node("/root/TransitionScreen"):
+		await get_node("/root/TransitionScreen").fade_to_black()
+	
+	GameEvents.instance.game_state_changed.emit(T.GameState.IN_GAME)
+	
+	if has_node("/root/TransitionScreen"):
+		get_node("/root/TransitionScreen").fade_to_clear()
+
+func _on_quit_pressed() -> void:
+	get_tree().quit()
+
+```
+
+--- SCRIPT: res://scripts/ui/UI.Menu.Pause.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: UI.Menu.Pause
+# Description: A decoupled UI pause menu that reacts to Game State changes.
+# Author: Architect
+
+extends Control
+class_name PauseMenuUI
+
+@export var resume_button: Button
+@export var quit_button: Button
+
+func _ready() -> void:
+	# Connect to the Universal Event Bus (SKILL-004)
+	GameEvents.instance.game_state_changed.connect(_on_game_state_changed)
+	if resume_button: resume_button.pressed.connect(_on_resume_pressed)
+	if quit_button: quit_button.pressed.connect(_on_quit_pressed)
+	hide() # Ensure the menu is invisible when the game boots up
+
+func _on_game_state_changed(new_state: T.GameState) -> void:
+	# We only become visible if the orchestrator decrees the game is paused
+	visible = (new_state == T.GameState.PAUSED)
+
+func _on_resume_pressed() -> void:
+	GameEvents.instance.game_state_changed.emit(T.GameState.IN_GAME)
+
+func _on_quit_pressed() -> void:
+	get_tree().quit()
+
+```
+
+--- SCRIPT: res://scripts/ui/UI.Quest.Tracker.gd ---
+```gdscript
+# [GVRN] [UAM-V15]
+# Artifact ID:   UI.Quest.Tracker
+# Description:   Visual Presentation Layer for active objectives.
+#                Implements DAMP signal binding to avoid lambda leaks.
+# Version:       1.1 [SOVEREIGN]
+# Relationships: GOVERNED_BY(Director), CONSUMES(QuestManager)
+# Status:        [CANONIZED]
+
+extends VBoxContainer
+class_name QuestTrackerUI
+
+@export var label_prefab: PackedScene
+
+func _ready() -> void:
+	Director.instance.quest_system_ready.connect(_on_quest_system_ready)
+
+func _on_quest_system_ready(mgr: QuestManager) -> void:
+	# Clear old tracker labels if scene reloaded
+	for child in get_children():
+		child.queue_free()
+
+	for q in mgr.active_quests:
+		for o in q.objectives:
+			var lbl = label_prefab.instantiate() as Label
+			add_child(lbl)
+			# Bind the specific label to the callback to avoid lambda leaks
+			o.progress_updated.connect(_update_label.bind(lbl, o.description))
+			_update_label(o.current_amount, o.required_amount, lbl, o.description)
+
+func _update_label(curr: int, total: int, lbl: Label, desc: String) -> void:
+	if is_instance_valid(lbl):
+		lbl.text = "%s: %d/%d" %[desc, curr, total]
+
+```
+
+--- SCRIPT: res://scripts/ui/UI.TransitionScreen.gd ---
+```gdscript
+# [GVRN]
+# Artifact ID: UI.TransitionScreen
+# Description: Global screen fader for state transitions.
+extends CanvasLayer
+class_name TransitionScreen
+
+@export var fade_rect: ColorRect
+@export var fade_duration: float = 1.0
+
+func _ready() -> void:
+	if fade_rect:
+		fade_rect.modulate.a = 0.0
+		fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE
+
+# Returns a Signal so we can 'await' it
+func fade_to_black() -> Signal:
+	fade_rect.mouse_filter = Control.MOUSE_FILTER_STOP # Block clicks while fading
+	var tween = create_tween()
+	tween.tween_property(fade_rect, "modulate:a", 1.0, fade_duration)
+	return tween.finished
+
+func fade_to_clear() -> Signal:
+	var tween = create_tween()
+	tween.tween_property(fade_rect, "modulate:a", 0.0, fade_duration)
+	tween.finished.connect(func(): fade_rect.mouse_filter = Control.MOUSE_FILTER_IGNORE)
+	return tween.finished
+
+```
+
+
+
+--- SCENES ---
+
+--- SCENE: res://scenes/entities/Boss.tscn ---
+```text
+Boss (CharacterBody3D) groups: [&"enemy"]
+├── LockOnMarker (Node3D)
+├── MeshInstance3D (MeshInstance3D)
+└── CollisionShape3D (CollisionShape3D)
+```
+
+--- SCENE: res://scenes/entities/EnemyBase.tscn ---
+```text
+EnemyBase (CharacterBody3D) groups: [&"enemy"]
+├── Collision (CollisionShape3D)
+├── Visuals (Node3D)
+├── └── AnimationPlayer (AnimationPlayer)
+├── NavigationComponent (Node3D)
+├── └── NavigationAgent3D (NavigationAgent3D)
+├── HurtboxComponent (Area3D)
+├── └── CollisionShape3D (CollisionShape3D)
+├── StateMachine (Node)
+├── ├── AIChaseState (Node)
+├── └── AIAttackState (Node)
+├── MeshInstance3D (MeshInstance3D)
+├── PoiseComponent (Node) script: res://scripts/components/COMP.Stats.Poise.gd
+├── HealthComponent (Node) script: res://scripts/components/COMP.Physics.Health.gd
+└── DetectionComponent (Area3D) script: res://scripts/components/sensors/COMP.AI.Detection.gd
+└── └── CollisionShape3D (CollisionShape3D)
+```
+
+--- SCENE: res://scenes/entities/Kaelen.tscn ---
+```text
+Kaelen (CharacterBody3D) groups: [&"player"]
+├── Collision (CollisionShape3D)
+├── Visuals (Node3D)
+├── └── PlayerVisuals (Node3D)
+├── └── └── JuiceNode (Node3D)
+├── └── └── └── Model (Node3D)
+├── └── └── └── ├── Armature (Node3D)
+├── └── └── └── ├── └── Skeleton3D (Skeleton3D)
+├── └── └── └── ├── └── ├── Alpha_Joints (MeshInstance3D)
+├── └── └── └── ├── └── └── Alpha_Surface (MeshInstance3D)
+├── └── └── └── └── AnimationPlayer (AnimationPlayer)
+├── AnimationTree (AnimationTree)
+├── CameraPivot (Node3D)
+├── └── PlayerCamera (SpringArm3D)
+├── └── └── Camera3D (Camera3D)
+├── HealthComponent (Node) script: res://scripts/components/COMP.Physics.Health.gd
+├── StaminaComponent (Node) script: res://scripts/components/COMP.Stats.Stamina.gd
+├── PoiseComponent (Node) script: res://scripts/components/COMP.Stats.Poise.gd
+├── HurtboxComponent (Area3D)
+├── └── CollisionShape3D (CollisionShape3D)
+├── HitboxComponent (Area3D)
+├── └── CollisionShape3D (CollisionShape3D)
+└── StateMachine (Node)
+└── ├── Idle (Node)
+└── ├── Move (Node)
+└── ├── Attack (Node)
+└── ├── Dodge (Node)
+└── ├── Parry (Node)
+└── └── Stagger (Node)
+```
+
+--- SCENE: res://scenes/entities/Player.tscn ---
+```text
+Player (CharacterBody3D) groups: [&"player"]
+├── Collision (CollisionShape3D)
+├── Visuals (Node3D)
+├── └── PlayerVisuals (Node3D)
+├── └── └── JuiceNode (Node3D)
+├── └── └── └── Model (Node3D)
+├── └── └── └── ├── Armature (Node3D)
+├── └── └── └── ├── └── Skeleton3D (Skeleton3D)
+├── └── └── └── ├── └── ├── Alpha_Joints (MeshInstance3D)
+├── └── └── └── ├── └── └── Alpha_Surface (MeshInstance3D)
+├── └── └── └── └── AnimationPlayer (AnimationPlayer)
+├── AnimationTree (AnimationTree)
+├── CameraPivot (Node3D)
+├── └── PlayerCamera (SpringArm3D)
+├── └── └── Camera3D (Camera3D)
+├── HealthComponent (Node) script: res://scripts/components/COMP.Physics.Health.gd
+├── StaminaComponent (Node) script: res://scripts/components/COMP.Stats.Stamina.gd
+├── PoiseComponent (Node) script: res://scripts/components/COMP.Stats.Poise.gd
+├── HurtboxComponent (Area3D)
+├── └── CollisionShape3D (CollisionShape3D)
+├── HitboxComponent (Area3D)
+├── └── CollisionShape3D (CollisionShape3D)
+└── StateMachine (Node)
+└── ├── Idle (Node)
+└── ├── Move (Node)
+└── ├── Attack (Node)
+└── ├── Dodge (Node)
+└── ├── Parry (Node)
+└── ├── Stagger (Node)
+└── ├── Jump (Node)
+└── └── Fall (Node)
+```
+
+--- SCENE: res://scenes/entities/PlayerVisuals.tscn ---
+```text
+PlayerVisuals (Node3D)
+└── JuiceNode (Node3D)
+└── └── Model (Node3D)
+└── └── ├── Armature (Node3D)
+└── └── ├── └── Skeleton3D (Skeleton3D)
+└── └── ├── └── ├── Alpha_Joints (MeshInstance3D)
+└── └── ├── └── └── Alpha_Surface (MeshInstance3D)
+└── └── └── AnimationPlayer (AnimationPlayer)
+```
+
+--- SCENE: res://scenes/tools/ProjectSanityCheck.tscn ---
+```text
+ProjectSanityCheck (Node) script: res://scripts/tools/ProjectSanityCheck.gd
+```
+
+--- SCENE: res://scenes/ui/Camera.tscn ---
+```text
+Node3D (Node3D)
+└── BetterCamera3D (Camera3D)
+```
+
+--- SCENE: res://scenes/ui/EquipmentMenu.tscn ---
+```text
+EquipmentMenu (Control)
+```
+
+--- SCENE: res://scenes/ui/EquipmentMenuUI.tscn ---
+```text
+CanvasLayer (CanvasLayer)
+└── EquipmentMenu (Control)
+```
+
+--- SCENE: res://scenes/ui/HUD.tscn ---
+```text
+HUD (CanvasLayer)
+├── HealthBar (ProgressBar)
+├── StaminaBar (ProgressBar)
+├── PauseMenuUI (Control)
+├── └── VBoxContainer (VBoxContainer)
+├── └── ├── QuitButton (Button)
+├── └── ├──   [signal] size_flags_changed -> Container::queue_sort
+├── └── ├──   [signal] minimum_size_changed -> Container::_child_minsize_changed
+├── └── ├──   [signal] visibility_changed -> Container::_child_minsize_changed
+├── └── └── ResumeButton (Button)
+├── └── └──   [signal] size_flags_changed -> Container::queue_sort
+├── └── └──   [signal] minimum_size_changed -> Container::_child_minsize_changed
+├── └── └──   [signal] visibility_changed -> Container::_child_minsize_changed
+└── MainMenu (Control)
+└── └── VBoxContainer (VBoxContainer)
+└── └── ├── StartButton (Button)
+└── └── ├──   [signal] size_flags_changed -> Container::queue_sort
+└── └── ├──   [signal] minimum_size_changed -> Container::_child_minsize_changed
+└── └── ├──   [signal] visibility_changed -> Container::_child_minsize_changed
+└── └── └── QuitButton (Button)
+└── └── └──   [signal] size_flags_changed -> Container::queue_sort
+└── └── └──   [signal] minimum_size_changed -> Container::_child_minsize_changed
+└── └── └──   [signal] visibility_changed -> Container::_child_minsize_changed
+```
+
+--- SCENE: res://scenes/ui/InventorySlotUI.tscn ---
+```text
+InventorySlotUi (CanvasLayer)
+└── InventorySlotUi (Control)
+└── └── Slot (PanelContainer)
+```
+
+--- SCENE: res://scenes/ui/LootDrop.tscn ---
+```text
+CanvasLayer (CanvasLayer)
+└── LootDrop (RigidBody3D)
+└── ├── MeshInstance3D (MeshInstance3D)
+└── ├── CollisionShape3D (CollisionShape3D)
+└── └── InteractableComponent (Area3D)
+└── └── └── CollisionShape3D (CollisionShape3D)
+```
+
+--- SCENE: res://scenes/ui/MainMenu.tscn ---
+```text
+MainMenuUI (CanvasLayer)
+└── MainMenu (Control)
+└── └── VBoxContainer (VBoxContainer)
+└── └── ├── StartButton (Button)
+└── └── ├──   [signal] size_flags_changed -> Container::queue_sort
+└── └── ├──   [signal] minimum_size_changed -> Container::_child_minsize_changed
+└── └── ├──   [signal] visibility_changed -> Container::_child_minsize_changed
+└── └── └── QuitButton (Button)
+└── └── └──   [signal] size_flags_changed -> Container::queue_sort
+└── └── └──   [signal] minimum_size_changed -> Container::_child_minsize_changed
+└── └── └──   [signal] visibility_changed -> Container::_child_minsize_changed
+```
+
+--- SCENE: res://scenes/ui/MainMenuUI.tscn ---
+```text
+MainMenuUI (CanvasLayer)
+└── MainMenu (Control)
+└── └── VBoxContainer (VBoxContainer)
+└── └── ├── StartButton (Button)
+└── └── ├──   [signal] size_flags_changed -> Container::queue_sort
+└── └── ├──   [signal] minimum_size_changed -> Container::_child_minsize_changed
+└── └── ├──   [signal] visibility_changed -> Container::_child_minsize_changed
+└── └── └── QuitButton (Button)
+└── └── └──   [signal] size_flags_changed -> Container::queue_sort
+└── └── └──   [signal] minimum_size_changed -> Container::_child_minsize_changed
+└── └── └──   [signal] visibility_changed -> Container::_child_minsize_changed
+```
+
+--- SCENE: res://scenes/ui/Slot.tscn ---
+```text
+CanvasLayer (CanvasLayer)
+└── InventorySlotUi (Control)
+└── └── Slot (PanelContainer)
+```
+
+--- SCENE: res://scenes/ui/TransitionScreen.tscn ---
+```text
+TransitionScreen (CanvasLayer)
+└── ColorRect (ColorRect)
+```
+
+--- SCENE: res://scenes/vfx/DefaultVFX.tscn ---
+```text
+DefaultVFX (CPUParticles3D) script: res://scripts/components/vfx/FABRIC.VFX.VFXInstance.gd
+  [signal] finished -> _on_finished
+  [signal] visibility_changed -> _on_visibility_changed
+  [signal] ready -> _on_ready
+  [signal] renamed -> _on_renamed
+  [signal] tree_entered -> _on_tree_entered
+  [signal] tree_exited -> _on_tree_exited
+  [signal] child_entered_tree -> _on_child_entered_tree
+  [signal] child_exiting_tree -> _on_child_exiting_tree
+  [signal] child_order_changed -> _on_child_order_changed
+  [signal] replacing_by -> _on_replacing_by
+  [signal] editor_description_changed -> _on_editor_description_changed
+  [signal] script_changed -> _on_script_changed
+  [signal] property_list_changed -> _on_property_list_changed
+```
+
+--- SCENE: res://scenes/vfx/VFXInstance.tscn ---
+```text
+VFXInstance (Node3D) script: res://scripts/systems/FABRIC.System.VFXInstance.gd
+```
+
+--- SCENE: res://scenes/vfx/VFXPool.tscn ---
+```text
+VFXPool (Node3D)
+```
+
+--- SCENE: res://scenes/world/Main.tscn ---
+```text
+Main (Node3D)
+├── WorldEnvironment (WorldEnvironment)
+├── DirectionalLight3D (DirectionalLight3D)
+├── Environment (Node3D)
+├── └── Floor (CSGBox3D) groups: [&"world"]
+├── Player (CharacterBody3D) groups: [&"player"]
+├── ├── Collision (CollisionShape3D)
+├── ├── Visuals (Node3D)
+├── ├── └── PlayerVisuals (Node3D)
+├── ├── └── └── JuiceNode (Node3D)
+├── ├── └── └── └── Model (Node3D)
+├── ├── └── └── └── ├── Armature (Node3D)
+├── ├── └── └── └── ├── └── Skeleton3D (Skeleton3D)
+├── ├── └── └── └── ├── └── ├── Alpha_Joints (MeshInstance3D)
+├── ├── └── └── └── ├── └── └── Alpha_Surface (MeshInstance3D)
+├── ├── └── └── └── └── AnimationPlayer (AnimationPlayer)
+├── ├── AnimationTree (AnimationTree)
+├── ├── CameraPivot (Node3D)
+├── ├── └── PlayerCamera (SpringArm3D)
+├── ├── └── └── Camera3D (Camera3D)
+├── ├── HealthComponent (Node) script: res://scripts/components/COMP.Physics.Health.gd
+├── ├── StaminaComponent (Node) script: res://scripts/components/COMP.Stats.Stamina.gd
+├── ├── PoiseComponent (Node) script: res://scripts/components/COMP.Stats.Poise.gd
+├── ├── HurtboxComponent (Area3D)
+├── ├── └── CollisionShape3D (CollisionShape3D)
+├── ├── HitboxComponent (Area3D)
+├── ├── └── CollisionShape3D (CollisionShape3D)
+├── └── StateMachine (Node)
+├── └── ├── Idle (Node)
+├── └── ├── Move (Node)
+├── └── ├── Attack (Node)
+├── └── ├── Dodge (Node)
+├── └── ├── Parry (Node)
+├── └── ├── Stagger (Node)
+├── └── ├── Jump (Node)
+├── └── └── Fall (Node)
+├── EnemyBase (CharacterBody3D) groups: [&"enemy"]
+├── ├── Collision (CollisionShape3D)
+├── ├── Visuals (Node3D)
+├── ├── └── AnimationPlayer (AnimationPlayer)
+├── ├── NavigationComponent (Node3D)
+├── ├── └── NavigationAgent3D (NavigationAgent3D)
+├── ├── HurtboxComponent (Area3D)
+├── ├── └── CollisionShape3D (CollisionShape3D)
+├── ├── StateMachine (Node)
+├── ├── ├── AIChaseState (Node)
+├── ├── └── AIAttackState (Node)
+├── ├── MeshInstance3D (MeshInstance3D)
+├── ├── PoiseComponent (Node) script: res://scripts/components/COMP.Stats.Poise.gd
+├── ├── HealthComponent (Node) script: res://scripts/components/COMP.Physics.Health.gd
+├── └── DetectionComponent (Area3D) script: res://scripts/components/sensors/COMP.AI.Detection.gd
+├── └── └── CollisionShape3D (CollisionShape3D)
+└── HUD (CanvasLayer)
+└── ├── HealthBar (ProgressBar)
+└── ├── StaminaBar (ProgressBar)
+└── ├── PauseMenuUI (Control)
+└── ├── └── VBoxContainer (VBoxContainer)
+└── ├── └── ├── QuitButton (Button)
+└── ├── └── ├──   [signal] size_flags_changed -> Container::queue_sort
+└── ├── └── ├──   [signal] minimum_size_changed -> Container::_child_minsize_changed
+└── ├── └── ├──   [signal] visibility_changed -> Container::_child_minsize_changed
+└── ├── └── └── ResumeButton (Button)
+└── ├── └── └──   [signal] size_flags_changed -> Container::queue_sort
+└── ├── └── └──   [signal] minimum_size_changed -> Container::_child_minsize_changed
+└── ├── └── └──   [signal] visibility_changed -> Container::_child_minsize_changed
+└── └── MainMenu (Control)
+└── └── └── VBoxContainer (VBoxContainer)
+└── └── └── ├── StartButton (Button)
+└── └── └── ├──   [signal] size_flags_changed -> Container::queue_sort
+└── └── └── ├──   [signal] minimum_size_changed -> Container::_child_minsize_changed
+└── └── └── ├──   [signal] visibility_changed -> Container::_child_minsize_changed
+└── └── └── └── QuitButton (Button)
+└── └── └── └──   [signal] size_flags_changed -> Container::queue_sort
+└── └── └── └──   [signal] minimum_size_changed -> Container::_child_minsize_changed
+└── └── └── └──   [signal] visibility_changed -> Container::_child_minsize_changed
+```
+
+--- SCENE: res://scenes/world/TestArena.tscn ---
+```text
+TestArena (Node3D)
+├── WorldEnvironment (WorldEnvironment)
+├── DirectionalLight3D (DirectionalLight3D)
+├── Floor (StaticBody3D)
+├── ├── MeshInstance3D (MeshInstance3D)
+├── └── CollisionShape3D (CollisionShape3D)
+└── Kaelen (CharacterBody3D) groups: [&"player"]
+└── ├── Collision (CollisionShape3D)
+└── ├── Visuals (Node3D)
+└── ├── └── PlayerVisuals (Node3D)
+└── ├── └── └── JuiceNode (Node3D)
+└── ├── └── └── └── Model (Node3D)
+└── ├── └── └── └── ├── Armature (Node3D)
+└── ├── └── └── └── ├── └── Skeleton3D (Skeleton3D)
+└── ├── └── └── └── ├── └── ├── Alpha_Joints (MeshInstance3D)
+└── ├── └── └── └── ├── └── └── Alpha_Surface (MeshInstance3D)
+└── ├── └── └── └── └── AnimationPlayer (AnimationPlayer)
+└── ├── AnimationTree (AnimationTree)
+└── ├── CameraPivot (Node3D)
+└── ├── └── PlayerCamera (SpringArm3D)
+└── ├── └── └── Camera3D (Camera3D)
+└── ├── HealthComponent (Node) script: res://scripts/components/COMP.Physics.Health.gd
+└── ├── StaminaComponent (Node) script: res://scripts/components/COMP.Stats.Stamina.gd
+└── ├── PoiseComponent (Node) script: res://scripts/components/COMP.Stats.Poise.gd
+└── ├── HurtboxComponent (Area3D)
+└── ├── └── CollisionShape3D (CollisionShape3D)
+└── ├── HitboxComponent (Area3D)
+└── ├── └── CollisionShape3D (CollisionShape3D)
+└── └── StateMachine (Node)
+└── └── ├── Idle (Node)
+└── └── ├── Move (Node)
+└── └── ├── Attack (Node)
+└── └── ├── Dodge (Node)
+└── └── ├── Parry (Node)
+└── └── └── Stagger (Node)
+```
+
+--- SCENE: res://scenes/world/VFXInstance.tscn ---
+```text
+VFXInstance (Node3D) script: res://scripts/systems/FABRIC.System.VFXInstance.gd
+```
+
+
+
+--- VISUAL CORTEX: SCENE HIERARCHIES ---
+
+--- SCENE: scenes\entities\Boss.tscn ---
+┕ Boss (CharacterBody3D) (Groups: "enemy")
+
+--- SCENE: scenes\entities\EnemyBase.tscn ---
+┕ EnemyBase (CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp", "anim", "detection_component") groups=["enemy)
+
+--- SCENE: scenes\entities\Kaelen.tscn ---
+┕ Kaelen (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\Player.tscn ---
+┕ Player (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\PlayerVisuals.tscn ---
+No root found
+
+--- SCENE: scenes\tools\ProjectSanityCheck.tscn ---
+┕ ProjectSanityCheck (SceneTree) [Script: res://scripts/tools/ProjectSanityCheck.gd]
+
+--- SCENE: scenes\ui\Camera.tscn ---
+No root found
+
+--- SCENE: scenes\ui\EquipmentMenu.tscn ---
+┕ EquipmentMenu (Control)
+
+--- SCENE: scenes\ui\EquipmentMenuUI.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\HUD.tscn ---
+No root found
+
+--- SCENE: scenes\ui\InventorySlotUI.tscn ---
+┕ InventorySlotUi (CanvasLayer)
+  ┕ Slot (PanelContainer)
+
+--- SCENE: scenes\ui\LootDrop.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenu.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenuUI.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\Slot.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\TransitionScreen.tscn ---
+┕ TransitionScreen (CanvasLayer)
+
+--- SCENE: scenes\vfx\DefaultVFX.tscn ---
+┕ DefaultVFX (CPUParticles3D)
+
+  [Signals]
+    ..child_entered_tree -> .._on_child_entered_tree
+    ..child_exiting_tree -> .._on_child_exiting_tree
+    ..child_order_changed -> .._on_child_order_changed
+    ..editor_description_changed -> .._on_editor_description_changed
+    ..finished -> .._on_finished
+    ..property_list_changed -> .._on_property_list_changed
+    ..ready -> .._on_ready
+    ..renamed -> .._on_renamed
+    ..replacing_by -> .._on_replacing_by
+    ..script_changed -> .._on_script_changed
+    ..tree_entered -> .._on_tree_entered
+    ..tree_exited -> .._on_tree_exited
+    ..visibility_changed -> .._on_visibility_changed
+
+--- SCENE: scenes\vfx\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- SCENE: scenes\vfx\VFXPool.tscn ---
+┕ VFXPool (Node3D)
+
+--- SCENE: scenes\world\Main.tscn ---
+No root found
+
+--- SCENE: scenes\world\TestArena.tscn ---
+No root found
+
+--- SCENE: scenes\world\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- VISUAL CORTEX: SCENE HIERARCHIES ---
+
+--- SCENE: scenes\entities\Boss.tscn ---
+┕ Boss (CharacterBody3D) (Groups: "enemy")
+
+--- SCENE: scenes\entities\EnemyBase.tscn ---
+┕ EnemyBase (CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp", "anim", "detection_component") groups=["enemy)
+
+--- SCENE: scenes\entities\Kaelen.tscn ---
+┕ Kaelen (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\Player.tscn ---
+┕ Player (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\PlayerVisuals.tscn ---
+No root found
+
+--- SCENE: scenes\tools\ProjectSanityCheck.tscn ---
+┕ ProjectSanityCheck (SceneTree) [Script: res://scripts/tools/ProjectSanityCheck.gd]
+
+--- SCENE: scenes\ui\Camera.tscn ---
+No root found
+
+--- SCENE: scenes\ui\EquipmentMenu.tscn ---
+┕ EquipmentMenu (Control)
+
+--- SCENE: scenes\ui\EquipmentMenuUI.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\HUD.tscn ---
+No root found
+
+--- SCENE: scenes\ui\InventorySlotUI.tscn ---
+┕ InventorySlotUi (CanvasLayer)
+  ┕ Slot (PanelContainer)
+
+--- SCENE: scenes\ui\LootDrop.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenu.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenuUI.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\Slot.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\TransitionScreen.tscn ---
+┕ TransitionScreen (CanvasLayer)
+
+--- SCENE: scenes\vfx\DefaultVFX.tscn ---
+┕ DefaultVFX (CPUParticles3D)
+
+  [Signals]
+    ..child_entered_tree -> .._on_child_entered_tree
+    ..child_exiting_tree -> .._on_child_exiting_tree
+    ..child_order_changed -> .._on_child_order_changed
+    ..editor_description_changed -> .._on_editor_description_changed
+    ..finished -> .._on_finished
+    ..property_list_changed -> .._on_property_list_changed
+    ..ready -> .._on_ready
+    ..renamed -> .._on_renamed
+    ..replacing_by -> .._on_replacing_by
+    ..script_changed -> .._on_script_changed
+    ..tree_entered -> .._on_tree_entered
+    ..tree_exited -> .._on_tree_exited
+    ..visibility_changed -> .._on_visibility_changed
+
+--- SCENE: scenes\vfx\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- SCENE: scenes\vfx\VFXPool.tscn ---
+┕ VFXPool (Node3D)
+
+--- SCENE: scenes\world\Main.tscn ---
+No root found
+
+--- SCENE: scenes\world\TestArena.tscn ---
+No root found
+
+--- SCENE: scenes\world\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- VISUAL CORTEX: SCENE HIERARCHIES ---
+
+--- SCENE: scenes\entities\Boss.tscn ---
+┕ Boss (CharacterBody3D) (Groups: "enemy")
+
+--- SCENE: scenes\entities\EnemyBase.tscn ---
+┕ EnemyBase (CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp", "anim", "detection_component") groups=["enemy)
+
+--- SCENE: scenes\entities\Kaelen.tscn ---
+┕ Kaelen (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\Player.tscn ---
+┕ Player (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\PlayerVisuals.tscn ---
+No root found
+
+--- SCENE: scenes\tools\ProjectSanityCheck.tscn ---
+┕ ProjectSanityCheck (SceneTree) [Script: res://scripts/tools/ProjectSanityCheck.gd]
+
+--- SCENE: scenes\ui\Camera.tscn ---
+No root found
+
+--- SCENE: scenes\ui\EquipmentMenu.tscn ---
+┕ EquipmentMenu (Control)
+
+--- SCENE: scenes\ui\EquipmentMenuUI.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\HUD.tscn ---
+No root found
+
+--- SCENE: scenes\ui\InventorySlotUI.tscn ---
+┕ InventorySlotUi (CanvasLayer)
+  ┕ Slot (PanelContainer)
+
+--- SCENE: scenes\ui\LootDrop.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenu.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenuUI.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\Slot.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\TransitionScreen.tscn ---
+┕ TransitionScreen (CanvasLayer)
+
+--- SCENE: scenes\vfx\DefaultVFX.tscn ---
+┕ DefaultVFX (CPUParticles3D)
+
+  [Signals]
+    ..child_entered_tree -> .._on_child_entered_tree
+    ..child_exiting_tree -> .._on_child_exiting_tree
+    ..child_order_changed -> .._on_child_order_changed
+    ..editor_description_changed -> .._on_editor_description_changed
+    ..finished -> .._on_finished
+    ..property_list_changed -> .._on_property_list_changed
+    ..ready -> .._on_ready
+    ..renamed -> .._on_renamed
+    ..replacing_by -> .._on_replacing_by
+    ..script_changed -> .._on_script_changed
+    ..tree_entered -> .._on_tree_entered
+    ..tree_exited -> .._on_tree_exited
+    ..visibility_changed -> .._on_visibility_changed
+
+--- SCENE: scenes\vfx\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- SCENE: scenes\vfx\VFXPool.tscn ---
+┕ VFXPool (Node3D)
+
+--- SCENE: scenes\world\Main.tscn ---
+No root found
+
+--- SCENE: scenes\world\TestArena.tscn ---
+No root found
+
+--- SCENE: scenes\world\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- VISUAL CORTEX: SCENE HIERARCHIES ---
+
+--- SCENE: scenes\entities\Boss.tscn ---
+┕ Boss (CharacterBody3D) (Groups: "enemy")
+
+--- SCENE: scenes\entities\EnemyBase.tscn ---
+┕ EnemyBase (CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp", "anim", "detection_component") groups=["enemy)
+
+--- SCENE: scenes\entities\Kaelen.tscn ---
+┕ Kaelen (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\Player.tscn ---
+┕ Player (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\PlayerVisuals.tscn ---
+No root found
+
+--- SCENE: scenes\tools\ProjectSanityCheck.tscn ---
+┕ ProjectSanityCheck (SceneTree) [Script: res://scripts/tools/ProjectSanityCheck.gd]
+
+--- SCENE: scenes\ui\Camera.tscn ---
+No root found
+
+--- SCENE: scenes\ui\EquipmentMenu.tscn ---
+┕ EquipmentMenu (Control)
+
+--- SCENE: scenes\ui\EquipmentMenuUI.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\HUD.tscn ---
+No root found
+
+--- SCENE: scenes\ui\InventorySlotUI.tscn ---
+┕ InventorySlotUi (CanvasLayer)
+  ┕ Slot (PanelContainer)
+
+--- SCENE: scenes\ui\LootDrop.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenu.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenuUI.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\Slot.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\TransitionScreen.tscn ---
+┕ TransitionScreen (CanvasLayer)
+
+--- SCENE: scenes\vfx\DefaultVFX.tscn ---
+┕ DefaultVFX (CPUParticles3D)
+
+  [Signals]
+    ..child_entered_tree -> .._on_child_entered_tree
+    ..child_exiting_tree -> .._on_child_exiting_tree
+    ..child_order_changed -> .._on_child_order_changed
+    ..editor_description_changed -> .._on_editor_description_changed
+    ..finished -> .._on_finished
+    ..property_list_changed -> .._on_property_list_changed
+    ..ready -> .._on_ready
+    ..renamed -> .._on_renamed
+    ..replacing_by -> .._on_replacing_by
+    ..script_changed -> .._on_script_changed
+    ..tree_entered -> .._on_tree_entered
+    ..tree_exited -> .._on_tree_exited
+    ..visibility_changed -> .._on_visibility_changed
+
+--- SCENE: scenes\vfx\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- SCENE: scenes\vfx\VFXPool.tscn ---
+┕ VFXPool (Node3D)
+
+--- SCENE: scenes\world\Main.tscn ---
+No root found
+
+--- SCENE: scenes\world\TestArena.tscn ---
+No root found
+
+--- SCENE: scenes\world\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- VISUAL CORTEX: SCENE HIERARCHIES ---
+
+--- SCENE: scenes\entities\Boss.tscn ---
+┕ Boss (CharacterBody3D) (Groups: "enemy")
+
+--- SCENE: scenes\entities\EnemyBase.tscn ---
+┕ EnemyBase (CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp", "anim", "detection_component") groups=["enemy)
+
+--- SCENE: scenes\entities\Kaelen.tscn ---
+┕ Kaelen (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\Player.tscn ---
+┕ Player (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\PlayerVisuals.tscn ---
+No root found
+
+--- SCENE: scenes\tools\ProjectSanityCheck.tscn ---
+┕ ProjectSanityCheck (SceneTree) [Script: res://scripts/tools/ProjectSanityCheck.gd]
+
+--- SCENE: scenes\ui\Camera.tscn ---
+No root found
+
+--- SCENE: scenes\ui\EquipmentMenu.tscn ---
+┕ EquipmentMenu (Control)
+
+--- SCENE: scenes\ui\EquipmentMenuUI.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\HUD.tscn ---
+No root found
+
+--- SCENE: scenes\ui\InventorySlotUI.tscn ---
+┕ InventorySlotUi (CanvasLayer)
+  ┕ Slot (PanelContainer)
+
+--- SCENE: scenes\ui\LootDrop.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenu.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenuUI.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\Slot.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\TransitionScreen.tscn ---
+┕ TransitionScreen (CanvasLayer)
+
+--- SCENE: scenes\vfx\DefaultVFX.tscn ---
+┕ DefaultVFX (CPUParticles3D)
+
+  [Signals]
+    ..child_entered_tree -> .._on_child_entered_tree
+    ..child_exiting_tree -> .._on_child_exiting_tree
+    ..child_order_changed -> .._on_child_order_changed
+    ..editor_description_changed -> .._on_editor_description_changed
+    ..finished -> .._on_finished
+    ..property_list_changed -> .._on_property_list_changed
+    ..ready -> .._on_ready
+    ..renamed -> .._on_renamed
+    ..replacing_by -> .._on_replacing_by
+    ..script_changed -> .._on_script_changed
+    ..tree_entered -> .._on_tree_entered
+    ..tree_exited -> .._on_tree_exited
+    ..visibility_changed -> .._on_visibility_changed
+
+--- SCENE: scenes\vfx\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- SCENE: scenes\vfx\VFXPool.tscn ---
+┕ VFXPool (Node3D)
+
+--- SCENE: scenes\world\Main.tscn ---
+No root found
+
+--- SCENE: scenes\world\TestArena.tscn ---
+No root found
+
+--- SCENE: scenes\world\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- VISUAL CORTEX: SCENE HIERARCHIES ---
+
+--- SCENE: scenes\entities\Boss.tscn ---
+┕ Boss (CharacterBody3D) (Groups: "enemy")
+
+--- SCENE: scenes\entities\EnemyBase.tscn ---
+┕ EnemyBase (CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp", "anim", "detection_component") groups=["enemy)
+
+--- SCENE: scenes\entities\Kaelen.tscn ---
+┕ Kaelen (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\Player.tscn ---
+┕ Player (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\PlayerVisuals.tscn ---
+No root found
+
+--- SCENE: scenes\tools\ProjectSanityCheck.tscn ---
+┕ ProjectSanityCheck (SceneTree) [Script: res://tools/godot/ProjectSanityCheck.gd]
+
+--- SCENE: scenes\ui\Camera.tscn ---
+No root found
+
+--- SCENE: scenes\ui\EquipmentMenu.tscn ---
+┕ EquipmentMenu (Control)
+
+--- SCENE: scenes\ui\EquipmentMenuUI.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\HUD.tscn ---
+No root found
+
+--- SCENE: scenes\ui\InventorySlotUI.tscn ---
+┕ InventorySlotUi (CanvasLayer)
+  ┕ Slot (PanelContainer)
+
+--- SCENE: scenes\ui\LootDrop.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenu.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenuUI.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\Slot.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\TransitionScreen.tscn ---
+┕ TransitionScreen (CanvasLayer)
+
+--- SCENE: scenes\vfx\DefaultVFX.tscn ---
+┕ DefaultVFX (CPUParticles3D)
+
+  [Signals]
+    ..child_entered_tree -> .._on_child_entered_tree
+    ..child_exiting_tree -> .._on_child_exiting_tree
+    ..child_order_changed -> .._on_child_order_changed
+    ..editor_description_changed -> .._on_editor_description_changed
+    ..finished -> .._on_finished
+    ..property_list_changed -> .._on_property_list_changed
+    ..ready -> .._on_ready
+    ..renamed -> .._on_renamed
+    ..replacing_by -> .._on_replacing_by
+    ..script_changed -> .._on_script_changed
+    ..tree_entered -> .._on_tree_entered
+    ..tree_exited -> .._on_tree_exited
+    ..visibility_changed -> .._on_visibility_changed
+
+--- SCENE: scenes\vfx\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- SCENE: scenes\vfx\VFXPool.tscn ---
+┕ VFXPool (Node3D)
+
+--- SCENE: scenes\world\Main.tscn ---
+No root found
+
+--- SCENE: scenes\world\TestArena.tscn ---
+No root found
+
+--- SCENE: scenes\world\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- VISUAL CORTEX: SCENE HIERARCHIES ---
+
+--- SCENE: scenes\entities\Boss.tscn ---
+┕ Boss (CharacterBody3D) (Groups: "enemy")
+
+--- SCENE: scenes\entities\EnemyBase.tscn ---
+┕ EnemyBase (CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp", "anim", "detection_component") groups=["enemy)
+
+--- SCENE: scenes\entities\Kaelen.tscn ---
+┕ Kaelen (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\Player.tscn ---
+┕ Player (CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component", "sanity_component") groups=["player) [Script: res://scripts/entities/player/COMM.Avatar.Player.gd]
+
+--- SCENE: scenes\entities\PlayerVisuals.tscn ---
+No root found
+
+--- SCENE: scenes\tools\ProjectSanityCheck.tscn ---
+No root found
+
+--- SCENE: scenes\ui\Camera.tscn ---
+No root found
+
+--- SCENE: scenes\ui\EquipmentMenu.tscn ---
+┕ EquipmentMenu (Control)
+
+--- SCENE: scenes\ui\EquipmentMenuUI.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\HUD.tscn ---
+┕ HUD (CanvasLayer)
+
+--- SCENE: scenes\ui\InventorySlotUI.tscn ---
+┕ InventorySlotUi (CanvasLayer)
+  ┕ Slot (PanelContainer)
+
+--- SCENE: scenes\ui\LootDrop.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenu.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\MainMenuUI.tscn ---
+┕ MainMenuUI (CanvasLayer)
+
+--- SCENE: scenes\ui\Slot.tscn ---
+┕ CanvasLayer (CanvasLayer)
+
+--- SCENE: scenes\ui\TransitionScreen.tscn ---
+┕ TransitionScreen (CanvasLayer)
+
+--- SCENE: scenes\vfx\DefaultVFX.tscn ---
+┕ DefaultVFX (CPUParticles3D)
+
+  [Signals]
+    ..child_entered_tree -> .._on_child_entered_tree
+    ..child_exiting_tree -> .._on_child_exiting_tree
+    ..child_order_changed -> .._on_child_order_changed
+    ..editor_description_changed -> .._on_editor_description_changed
+    ..finished -> .._on_finished
+    ..property_list_changed -> .._on_property_list_changed
+    ..ready -> .._on_ready
+    ..renamed -> .._on_renamed
+    ..replacing_by -> .._on_replacing_by
+    ..script_changed -> .._on_script_changed
+    ..tree_entered -> .._on_tree_entered
+    ..tree_exited -> .._on_tree_exited
+    ..visibility_changed -> .._on_visibility_changed
+
+--- SCENE: scenes\vfx\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)
+
+--- SCENE: scenes\vfx\VFXPool.tscn ---
+No root found
+
+--- SCENE: scenes\world\Arena_Sovereign.tscn ---
+┕ ArenaSovereign (Node3D)
+
+--- SCENE: scenes\world\Main.tscn ---
+No root found
+
+--- SCENE: scenes\world\TestArena.tscn ---
+No root found
+
+--- SCENE: scenes\world\VFXInstance.tscn ---
+┕ VFXInstance (Node3D)

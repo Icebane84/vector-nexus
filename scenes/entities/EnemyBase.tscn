@@ -1,25 +1,36 @@
-[gd_scene load_steps=11 format=3 uid="uid://dk5dhiv0s2qot"]
+[gd_scene load_steps=15 format=3 uid="uid://erbxbm2tqrpp"]
 
-[ext_resource type="Script" path="res://scripts/entities/enemies/EnemyBase.gd" id="1_EnemyBase"]
-[ext_resource type="Script" path="res://scripts/components/HealthComponent.gd" id="2_HealthComponent"]
-[ext_resource type="Script" path="res://scripts/components/NavigationComponent.gd" id="3_NavigationComponent"]
-[ext_resource type="Script" path="res://scripts/components/HurtboxComponent.gd" id="4_HurtboxComponent"]
-[ext_resource type="Script" path="res://scripts/components/state_machine/StateMachine.gd" id="5_StateMachine"]
-[ext_resource type="Script" path="res://scripts/entities/enemies/states/AIChaseState.gd" id="6_AIChaseState"]
-[ext_resource type="Script" path="res://scripts/entities/enemies/states/AIAttackState.gd" id="7_AIAttackState"]
+[ext_resource type="Script" path="res://scripts/components/sensors/COMP.AI.Detection.gd" id="1_641yr"]
+[ext_resource type="Script" path="res://scripts/entities/enemies/COMM.Enemy.EnemyBase.gd" id="1_EnemyBase"]
+[ext_resource type="Script" path="res://scripts/components/COMP.Physics.Health.gd" id="2_HealthComponent"]
+[ext_resource type="Script" path="res://scripts/components/COMP.Physics.Hurtbox.gd" id="4_HurtboxComponent"]
+[ext_resource type="Script" path="res://scripts/components/state_machine/FABRIC.Logic.StateMachine.gd" id="5_StateMachine"]
+[ext_resource type="Script" path="res://scripts/entities/enemies/states/COMM.Enemy.State.Chase.gd" id="6_AIChaseState"]
+[ext_resource type="Shader" path="res://scenes/entities/EnemyBase.gdshader" id="6_h04nj"]
+[ext_resource type="Script" path="res://scripts/components/COMP.Stats.Poise.gd" id="7_4kric"]
+[ext_resource type="Script" path="res://scripts/entities/enemies/states/COMM.Enemy.State.Attack.gd" id="7_AIAttackState"]
+[ext_resource type="Script" path="res://scripts/entities/enemies/states/COMM.Enemy.State.Idle.gd" id="8_AIIdleState"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_enemy"]
 
-[sub_resource type="StandardMaterial3D" id="StandardMaterial3D_6jej3"]
-albedo_color = Color(0.92549, 0.14902, 0.054902, 1)
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_nicf8"]
+render_priority = 0
+shader = ExtResource("6_h04nj")
 
-[sub_resource type="BoxMesh" id="BoxMesh_la7cj"]
-material = SubResource("StandardMaterial3D_6jej3")
+[sub_resource type="ShaderMaterial" id="ShaderMaterial_2adw5"]
 
-[node name="EnemyBase" type="CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp")]
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_nsqss"]
+radius = 10.0
+height = 10.0
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_enemy"]
+
+[node name="EnemyBase" type="CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp", "anim", "detection_component") groups=["enemy"]]
 script = ExtResource("1_EnemyBase")
 state_machine = NodePath("StateMachine")
 nav_comp = NodePath("NavigationComponent")
+anim = NodePath("Visuals/AnimationPlayer")
+detection_component = NodePath("DetectionComponent")
 
 [node name="Collision" type="CollisionShape3D" parent="."]
 shape = SubResource("CapsuleShape3D_enemy")
@@ -28,21 +39,25 @@ shape = SubResource("CapsuleShape3D_enemy")
 
 [node name="AnimationPlayer" type="AnimationPlayer" parent="Visuals"]
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="Visuals"]
-mesh = SubResource("BoxMesh_la7cj")
+[node name="NavigationComponent" type="Node3D" parent="."]
 
-[node name="HealthComponent" type="Node" parent="."]
-script = ExtResource("2_HealthComponent")
+[node name="NavigationAgent3D" type="NavigationAgent3D" parent="NavigationComponent"]
 
-[node name="HurtboxComponent" type="Area3D" parent="."]
+[node name="HurtboxComponent" type="Area3D" parent="." node_paths=PackedStringArray("health_component", "poise_component")]
 script = ExtResource("4_HurtboxComponent")
+health_component = NodePath("../HealthComponent")
+poise_component = NodePath("../PoiseComponent")
 team_id = 1
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="HurtboxComponent"]
 shape = SubResource("CapsuleShape3D_enemy")
 
-[node name="StateMachine" type="Node" parent="."]
+[node name="StateMachine" type="Node" parent="." node_paths=PackedStringArray("initial_state")]
 script = ExtResource("5_StateMachine")
+initial_state = NodePath("AIIdleState")
+
+[node name="AIIdleState" type="Node" parent="StateMachine"]
+script = ExtResource("8_AIIdleState")
 
 [node name="AIChaseState" type="Node" parent="StateMachine"]
 script = ExtResource("6_AIChaseState")
@@ -50,8 +65,19 @@ script = ExtResource("6_AIChaseState")
 [node name="AIAttackState" type="Node" parent="StateMachine"]
 script = ExtResource("7_AIAttackState")
 
-[node name="NavigationComponent" type="Node3D" parent="." node_paths=PackedStringArray("nav_agent")]
-script = ExtResource("3_NavigationComponent")
-nav_agent = NodePath("NavigationAgent3D")
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("CapsuleMesh_enemy")
+material_override = SubResource("ShaderMaterial_nicf8")
+material_overlay = SubResource("ShaderMaterial_2adw5")
 
-[node name="NavigationAgent3D" type="NavigationAgent3D" parent="NavigationComponent"]
+[node name="PoiseComponent" type="Node" parent="."]
+script = ExtResource("7_4kric")
+
+[node name="HealthComponent" type="Node" parent="."]
+script = ExtResource("2_HealthComponent")
+
+[node name="DetectionComponent" type="Area3D" parent="."]
+script = ExtResource("1_641yr")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="DetectionComponent"]
+shape = SubResource("CapsuleShape3D_nsqss")

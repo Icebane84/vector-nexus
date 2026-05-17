@@ -1,0 +1,7 @@
+{
+  "phoenix_metadata": {
+    "v_control": "2026-05-13T22:15:00Z"
+  },
+  "name": "Boss Stance System",
+  "description": "Hardened toolset for managing stance depletion and posture-break orchestration."
+}

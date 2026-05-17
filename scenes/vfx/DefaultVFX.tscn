@@ -1,0 +1,33 @@
+[gd_scene load_steps=3 format=3 uid="uid://br6f7h8kak0l1"]
+
+[ext_resource type="Script" path="res://scripts/components/vfx/FABRIC.VFX.VFXInstance.gd" id="1_vfx"]
+
+[sub_resource type="BoxMesh" id="BoxMesh_vfx"]
+size = Vector3(0.1, 0.1, 0.1)
+
+[node name="DefaultVFX" type="CPUParticles3D"]
+emitting = false
+amount = 12
+lifetime = 0.5
+one_shot = true
+explosiveness = 1.0
+mesh = SubResource("BoxMesh_vfx")
+direction = Vector3(0, 1, 0)
+spread = 180.0
+initial_velocity_min = 2.0
+initial_velocity_max = 4.0
+script = ExtResource("1_vfx")
+
+[connection signal="child_entered_tree" from="." to="." method="_on_child_entered_tree"]
+[connection signal="child_exiting_tree" from="." to="." method="_on_child_exiting_tree"]
+[connection signal="child_order_changed" from="." to="." method="_on_child_order_changed"]
+[connection signal="editor_description_changed" from="." to="." method="_on_editor_description_changed"]
+[connection signal="finished" from="." to="." method="_on_finished"]
+[connection signal="property_list_changed" from="." to="." method="_on_property_list_changed"]
+[connection signal="ready" from="." to="." method="_on_ready"]
+[connection signal="renamed" from="." to="." method="_on_renamed"]
+[connection signal="replacing_by" from="." to="." method="_on_replacing_by"]
+[connection signal="script_changed" from="." to="." method="_on_script_changed"]
+[connection signal="tree_entered" from="." to="." method="_on_tree_entered"]
+[connection signal="tree_exited" from="." to="." method="_on_tree_exited"]
+[connection signal="visibility_changed" from="." to="." method="_on_visibility_changed"]

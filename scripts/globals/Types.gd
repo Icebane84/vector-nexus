@@ -1,0 +1,25 @@
+# Types.gd
+# [GVRN: IGNORE SKILL-018]
+extends Object
+class_name T # Short for Types/Transitions
+
+enum CharacterState { IDLE, WALKING, ATTACKING, STAGGERED, DEAD,FALL, JUMP }
+enum CombatState { IDLE, CHASE, ATTACK, STAGGERED, DEAD }
+enum EnemyType { GRUNT, SHADOW, ELITE }
+enum Faction { PLAYER, VOID, CITIZEN }
+enum ErrorCode { NONE, INVALID_INPUT, OUT_OF_BOUNDS, NOT_FOUND, ERR_MESSAGE, ERR_STRING }
+enum GameState { MAIN_MENU, IN_GAME, PAUSED, GAME_OVER }
+enum StateID { IDLE, MOVE, ATTACK, DODGE, PARRY, STAGGER, CHASE, }
+enum AttackPhase { STARTUP, ACTIVE, RECOVERY }
+enum EquipmentSlot { WEAPON, ARMOR }
+enum LogLevel { INFO, WARN, ERROR, WOW }
+
+enum SystemEvents { 
+	PLAYER_SPAWNED,
+	PLAYER_DIED,
+	PLAYER_HEALTH_CHANGED,
+	PLAYER_MANA_CHANGED,
+	PLAYER_STAMINA_CHANGED
+}
+
+const ATTACK_BUFFER: float = 0.5

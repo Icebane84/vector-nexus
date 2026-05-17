@@ -1,0 +1,67 @@
+[gd_scene load_steps=5 format=3 uid="uid://dp6m0x1y2z3a"]
+
+[ext_resource type="Material" uid="uid://b1n2m3p4q5r6" path="res://assets/Materials/MAT_Ashen_Floor.tres" id="1_floor_mat"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
+sky_top_color = Color(0.05, 0.05, 0.07, 1)
+sky_horizon_color = Color(0.1, 0.1, 0.12, 1)
+ground_bottom_color = Color(0.02, 0.02, 0.03, 1)
+ground_horizon_color = Color(0.1, 0.1, 0.12, 1)
+
+[sub_resource type="Sky" id="Sky_ashen"]
+sky_material = SubResource("ProceduralSkyMaterial_sky")
+
+[sub_resource type="Environment" id="Environment_ashen"]
+background_mode = 2
+sky = SubResource("Sky_ashen")
+tonemap_mode = 2
+glow_enabled = true
+glow_intensity = 0.5
+glow_strength = 0.8
+glow_bloom = 0.1
+volumetric_fog_enabled = true
+volumetric_fog_density = 0.02
+volumetric_fog_albedo = Color(0.1, 0.1, 0.12, 1)
+
+[node name="ArenaSovereign" type="Node3D"]
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="."]
+environment = SubResource("Environment_ashen")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="."]
+transform = Transform3D(-0.866025, -0.433013, 0.25, 0, 0.5, 0.866025, -0.5, 0.75, -0.433013, 0, 10, 0)
+shadow_enabled = true
+shadow_blur = 2.0
+
+[node name="NavigationRegion3D" type="NavigationRegion3D" parent="."]
+
+[node name="Geometry" type="Node3D" parent="NavigationRegion3D"]
+
+[node name="Floor" type="CSGBox3D" parent="NavigationRegion3D/Geometry"]
+use_collision = true
+size = Vector3(60, 1, 60)
+material = ExtResource("1_floor_mat")
+
+[node name="Pillar1" type="CSGBox3D" parent="NavigationRegion3D/Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 3, 10)
+use_collision = true
+size = Vector3(2, 6, 2)
+material = ExtResource("1_floor_mat")
+
+[node name="Pillar2" type="CSGBox3D" parent="NavigationRegion3D/Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 3, -10)
+use_collision = true
+size = Vector3(2, 6, 2)
+material = ExtResource("1_floor_mat")
+
+[node name="Pillar3" type="CSGBox3D" parent="NavigationRegion3D/Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 10, 3, -10)
+use_collision = true
+size = Vector3(2, 6, 2)
+material = ExtResource("1_floor_mat")
+
+[node name="Pillar4" type="CSGBox3D" parent="NavigationRegion3D/Geometry"]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -10, 3, 10)
+use_collision = true
+size = Vector3(2, 6, 2)
+material = ExtResource("1_floor_mat")

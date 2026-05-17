@@ -1,0 +1,26 @@
+[gd_scene load_steps=2 format=3 uid="uid://b4fbjdd1fkblk"]
+
+[ext_resource type="Script" path="res://scripts/ui/UI.Menu.Main.gd" id="1_x2krv"]
+
+[node name="MainMenuUI" type="CanvasLayer"]
+
+[node name="MainMenu" type="Control" parent="." node_paths=PackedStringArray("start_button", "quit_button")]
+layout_mode = 3
+anchors_preset = 0
+offset_right = 40.0
+offset_bottom = 40.0
+script = ExtResource("1_x2krv")
+start_button = NodePath("VBoxContainer/StartButton")
+quit_button = NodePath("VBoxContainer/QuitButton")
+
+[node name="VBoxContainer" type="VBoxContainer" parent="MainMenu"]
+layout_mode = 0
+offset_right = 40.0
+offset_bottom = 40.0
+alignment = 1
+
+[node name="StartButton" type="Button" parent="MainMenu/VBoxContainer"]
+layout_mode = 2
+
+[node name="QuitButton" type="Button" parent="MainMenu/VBoxContainer"]
+layout_mode = 2

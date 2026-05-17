@@ -1,0 +1,47 @@
+{
+    "sonarlint.analyzerProperties": {
+        "sonar.exclusions": "**/pip/_vendor/**"
+    },
+    "godot-tabs-formatter.enabled": true,
+    "godot-tabs-formatter.debug": true,
+    "[gdscript]": {
+        "editor.defaultFormatter": "EddieDover.gdscript-formatter-linter",
+        "editor.formatOnSave": true,
+        "editor.suggest.showMethods": true,
+        "editor.suggest.showFields": true,
+        "editor.tabSize": 4,
+        "editor.insertSpaces": true
+    },
+    "godotTools.editorPath.godot4": "C:\\Users\\Chris\\Godot_4.6\\godot.exe",
+    "godotTools.editorPath": "C:\\Users\\Chris\\Godot_4.6\\godot.exe",
+    "godotTools.lsp.headless": false,
+    "godotTools.lsp.serverPort": 6005,
+    "cSpell.words": [
+        "Autoload",
+        "GVRN",
+        "Hitbox",
+        "Hurtbox",
+        "lerp",
+        "Lerp",
+        "maxf",
+        "PHOENIX",
+        "printerr",
+        "regen",
+        "savegame",
+        "synarche",
+        "TSCN"
+    ],
+    "markdownlint.config": {
+        "MD053": false,
+        "MD036": false
+    },
+    "markdown.validate.referenceLinks.enabled": "ignore",
+    "files.associations": {
+        "*.tscn": "",
+        "*.tres": "",
+        "*.import": ""
+    },
+    "editor.codeActionsOnSave": {
+        "source.fixAll": "explicit"
+    }
+}

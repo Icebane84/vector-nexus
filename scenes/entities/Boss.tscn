@@ -1,0 +1,18 @@
+[gd_scene load_steps=3 format=3 uid="uid://boss1234567"]
+
+[sub_resource type="CapsuleMesh" id="CapsuleMesh_boss"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_boss"]
+
+[node name="Boss" type="CharacterBody3D" groups=["enemy"]]
+collision_layer = 4
+collision_mask = 3
+
+[node name="LockOnMarker" type="Node3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
+mesh = SubResource("CapsuleMesh_boss")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="."]
+shape = SubResource("CapsuleShape3D_boss")

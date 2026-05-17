@@ -1,0 +1,157 @@
+[gd_scene format=3 uid="uid://bvripcf01ii3v"]
+
+[ext_resource type="Script" uid="uid://cy46orerrnovq" path="res://scripts/entities/player/COMM.Avatar.Player.gd" id="1_Player"]
+[ext_resource type="Script" uid="uid://cxwhusfnfw8xl" path="res://scripts/entities/player/COMM.Avatar.PlayerCamera.gd" id="2_PlayerCamera"]
+[ext_resource type="PackedScene" uid="uid://dos2ot6jqa6hj" path="res://scenes/entities/PlayerVisuals.tscn" id="2_vty87"]
+[ext_resource type="Script" uid="uid://g7udp3dpgajr" path="res://scripts/components/COMP.Physics.Health.gd" id="3_HealthComponent"]
+[ext_resource type="Script" uid="uid://yo76xuqg5an3" path="res://scripts/components/COMP.Stats.Stamina.gd" id="4_StaminaComponent"]
+[ext_resource type="Script" uid="uid://du4d7b7fctvfd" path="res://scripts/components/COMP.Stats.Poise.gd" id="5_PoiseComponent"]
+[ext_resource type="Script" uid="uid://dgeht71fop6gl" path="res://scripts/components/COMP.Physics.Hitbox.gd" id="6_HitboxComponent"]
+[ext_resource type="Script" uid="uid://beg487dqvy8nm" path="res://scripts/components/COMP.Physics.Hurtbox.gd" id="7_HurtboxComponent"]
+[ext_resource type="Script" uid="uid://u1vkncqtvrbw" path="res://scripts/components/state_machine/FABRIC.Logic.StateMachine.gd" id="8_StateMachine"]
+[ext_resource type="Script" uid="uid://b7tdv25rajucc" path="res://scripts/entities/player/states/COMM.Avatar.State.Idle.gd" id="9_PlayerIdleState"]
+[ext_resource type="Script" uid="uid://mranvctaynex" path="res://scripts/entities/player/states/COMM.Avatar.State.Move.gd" id="10_PlayerMoveState"]
+[ext_resource type="Script" uid="uid://rtbd62nhjddq" path="res://scripts/entities/player/states/COMM.Avatar.State.Attack.gd" id="11_PlayerAttackState"]
+[ext_resource type="Script" uid="uid://d350orhuemspq" path="res://scripts/entities/player/states/COMM.Avatar.State.Dodge.gd" id="12_PlayerDodgeState"]
+[ext_resource type="Script" uid="uid://5jbmi5car6ox" path="res://scripts/entities/player/states/COMM.Avatar.State.Parry.gd" id="13_PlayerParryState"]
+[ext_resource type="Script" uid="uid://bllxppfk4htds" path="res://scripts/entities/player/states/COMM.Avatar.State.Stagger.gd" id="15_PlayerStaggerState"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_player"]
+
+[sub_resource type="AnimationRootNode" id="AnimationRootNode_37p5y"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_d6xvf"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_as2oo"]
+
+[node name="Kaelen" type="CharacterBody3D" unique_id=696114572 node_paths=PackedStringArray("state_machine", "camera", "visuals", "animation_tree", "animation_player", "health_component", "stamina_component", "hurtbox_component", "hitbox_component", "poise_component") groups=["player"]]
+script = ExtResource("1_Player")
+state_machine = NodePath("StateMachine")
+camera = NodePath("CameraPivot/PlayerCamera")
+visuals = NodePath("Visuals")
+animation_tree = NodePath("AnimationTree")
+animation_player = NodePath("Visuals/PlayerVisuals/JuiceNode/Model/AnimationPlayer")
+health_component = NodePath("HealthComponent")
+stamina_component = NodePath("StaminaComponent")
+hurtbox_component = NodePath("HurtboxComponent")
+hitbox_component = NodePath("HitboxComponent")
+poise_component = NodePath("PoiseComponent")
+
+[node name="Collision" type="CollisionShape3D" parent="." unique_id=1220997774]
+unique_name_in_owner = true
+shape = SubResource("CapsuleShape3D_player")
+
+[node name="Visuals" type="Node3D" parent="." unique_id=1330879842]
+
+[node name="PlayerVisuals" parent="Visuals" unique_id=1445723244 instance=ExtResource("2_vty87")]
+
+[node name="Skeleton3D" parent="Visuals/PlayerVisuals/JuiceNode/Model/Armature" index="0"]
+bones/1/rotation = Quaternion(-0.0607301, 4.661854e-07, -7.662104e-06, 0.9981542)
+bones/4/rotation = Quaternion(0.060534514, -7.2197383e-07, 3.4469663e-06, 0.99816614)
+bones/9/rotation = Quaternion(0.48000714, 0.5744515, -0.5201971, 0.41108835)
+bones/10/rotation = Quaternion(0.004038142, 0.00051540305, 0.07563971, 0.99712694)
+bones/11/rotation = Quaternion(-0.0047982633, 1.1804157e-05, 0.053670984, 0.99854714)
+bones/12/rotation = Quaternion(0.041979134, -0.0027530622, 0.009315679, 0.9990713)
+bones/13/rotation = Quaternion(-0.03348518, -0.075557746, -0.027111366, 0.9962102)
+bones/14/rotation = Quaternion(0.06812732, -3.577605e-07, -8.9381786e-08, 0.9976767)
+bones/15/rotation = Quaternion(-0.0025115563, 2.1539817e-07, -6.8452444e-08, 0.99999684)
+bones/18/rotation = Quaternion(0.03566651, 5.311916e-07, 2.0688518e-07, 0.9993638)
+bones/19/rotation = Quaternion(-0.03364517, 4.286512e-08, 2.2550782e-07, 0.9994338)
+bones/22/rotation = Quaternion(0.02613181, 3.3352737e-07, -1.2437403e-07, 0.9996585)
+bones/23/rotation = Quaternion(0.023190184, -7.045026e-08, 2.5711418e-07, 0.99973106)
+bones/25/rotation = Quaternion(-0.02540613, -0.07539673, -0.048882935, 0.9956306)
+bones/26/rotation = Quaternion(0.016589217, 5.9088915e-08, -6.86945e-08, 0.9998624)
+bones/29/rotation = Quaternion(-0.01965393, -0.075960144, -0.02194614, 0.99667555)
+bones/30/rotation = Quaternion(0.013303821, -2.604733e-07, 6.612975e-08, 0.9999115)
+bones/31/rotation = Quaternion(0.0077903983, 3.736174e-07, 1.32019e-07, 0.99996966)
+bones/33/rotation = Quaternion(-0.48000723, 0.57445127, -0.5201974, -0.41108817)
+bones/34/rotation = Quaternion(0.004037801, -0.00051530736, -0.07563967, 0.99712694)
+bones/35/rotation = Quaternion(-0.0047981963, -1.1838433e-05, -0.053671073, 0.99854714)
+bones/36/rotation = Quaternion(0.04197912, 0.002752965, -0.009315617, 0.9990713)
+bones/37/rotation = Quaternion(-0.033485312, 0.075557835, 0.027111264, 0.9962102)
+bones/38/rotation = Quaternion(0.0681275, -7.230182e-08, 2.2497143e-07, 0.9976766)
+bones/39/rotation = Quaternion(-0.0025109823, 3.38304e-07, -2.00235e-08, 0.99999684)
+bones/41/rotation = Quaternion(0.13318148, 0.03231465, -0.24405208, 0.9600297)
+bones/43/rotation = Quaternion(-0.033644985, 5.870657e-08, -1.99416e-07, 0.9994338)
+bones/45/rotation = Quaternion(0.024624014, 0.077756934, 0.04506418, 0.9956489)
+bones/46/rotation = Quaternion(0.026127972, 8.885519e-08, -3.4738545e-07, 0.99965864)
+bones/47/rotation = Quaternion(0.02319425, 1.7467002e-08, 3.0270309e-07, 0.99973094)
+bones/49/rotation = Quaternion(-0.025405647, 0.075396396, 0.0488828, 0.9956307)
+bones/50/rotation = Quaternion(0.016588928, -9.896666e-08, -1.7464707e-08, 0.9998624)
+bones/51/rotation = Quaternion(0.077742144, 2.2664811e-07, 1.214394e-08, 0.9969735)
+bones/53/rotation = Quaternion(-0.019654717, 0.075960234, 0.021946121, 0.9966755)
+bones/54/rotation = Quaternion(0.013304228, 2.270591e-07, -1.0338597e-07, 0.9999115)
+bones/55/rotation = Quaternion(0.007792342, -3.095869e-07, 2.5542298e-07, 0.99996966)
+bones/57/rotation = Quaternion(-7.548002e-08, -0.02175731, 0.9997633, 1.6426309e-09)
+bones/58/rotation = Quaternion(-0.01808578, 0.000106104795, 0.005911545, 0.999819)
+bones/59/rotation = Quaternion(0.46075168, 0.0025114429, -0.015330936, 0.8873931)
+bones/62/rotation = Quaternion(-7.548002e-08, -0.02175731, 0.9997633, 1.6426309e-09)
+bones/63/rotation = Quaternion(-0.018085778, -0.00010625578, -0.0059115477, 0.999819)
+bones/64/rotation = Quaternion(0.46075168, -0.0025114429, 0.015330936, 0.8873931)
+bones/65/rotation = Quaternion(0.33948696, -0.003857264, -0.010686648, 0.94054216)
+
+[node name="AnimationTree" type="AnimationTree" parent="." unique_id=1842424989]
+root_node = NodePath("../Visuals/PlayerVisuals/JuiceNode/Model")
+tree_root = SubResource("AnimationRootNode_37p5y")
+advance_expression_base_node = NodePath("../StateMachine")
+anim_player = NodePath("../Visuals/PlayerVisuals/JuiceNode/Model/AnimationPlayer")
+
+[node name="CameraPivot" type="Node3D" parent="." unique_id=1879490104]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)
+
+[node name="PlayerCamera" type="SpringArm3D" parent="CameraPivot" unique_id=239603835]
+collision_mask = 63
+shape = SubResource("CapsuleShape3D_d6xvf")
+script = ExtResource("2_PlayerCamera")
+
+[node name="Camera3D" type="Camera3D" parent="CameraPivot/PlayerCamera" unique_id=1568615291]
+
+[node name="HealthComponent" type="Node" parent="." unique_id=1333022996]
+script = ExtResource("3_HealthComponent")
+
+[node name="StaminaComponent" type="Node" parent="." unique_id=782831719]
+script = ExtResource("4_StaminaComponent")
+
+[node name="PoiseComponent" type="Node" parent="." unique_id=327636437]
+script = ExtResource("5_PoiseComponent")
+
+[node name="HurtboxComponent" type="Area3D" parent="." unique_id=1146258360 node_paths=PackedStringArray("health_component", "poise_component")]
+script = ExtResource("7_HurtboxComponent")
+health_component = NodePath("../HealthComponent")
+poise_component = NodePath("../PoiseComponent")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HurtboxComponent" unique_id=1036425969]
+shape = SubResource("CapsuleShape3D_player")
+
+[node name="HitboxComponent" type="Area3D" parent="." unique_id=638944236]
+script = ExtResource("6_HitboxComponent")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HitboxComponent" unique_id=1805803416]
+shape = SubResource("CapsuleShape3D_as2oo")
+
+[node name="StateMachine" type="Node" parent="." unique_id=806308603 node_paths=PackedStringArray("initial_state")]
+script = ExtResource("8_StateMachine")
+initial_state = NodePath("Idle")
+
+[node name="Idle" type="Node" parent="StateMachine" unique_id=1091902346]
+script = ExtResource("9_PlayerIdleState")
+
+[node name="Move" type="Node" parent="StateMachine" unique_id=1271434197]
+script = ExtResource("10_PlayerMoveState")
+state_id = 1
+
+[node name="Attack" type="Node" parent="StateMachine" unique_id=676292209]
+script = ExtResource("11_PlayerAttackState")
+
+[node name="Dodge" type="Node" parent="StateMachine" unique_id=1055193316]
+script = ExtResource("12_PlayerDodgeState")
+state_id = 3
+
+[node name="Parry" type="Node" parent="StateMachine" unique_id=950726128]
+script = ExtResource("13_PlayerParryState")
+
+[node name="Stagger" type="Node" parent="StateMachine" unique_id=283442833]
+script = ExtResource("15_PlayerStaggerState")
+
+[editable path="Visuals/PlayerVisuals"]
+[editable path="Visuals/PlayerVisuals/JuiceNode/Model"]

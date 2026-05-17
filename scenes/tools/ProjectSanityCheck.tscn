@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://cto2r01tmp7v1"]
+
+[ext_resource type="Script" uid="uid://b4nedgiwnveya" path="res://tools/godot/verification/ProjectSanityCheck.gd" id="1_ProjectSanityCheck"]
+
+[node name="ProjectSanityCheck" type="SceneTree" unique_id=1291602356]
+script = ExtResource("1_ProjectSanityCheck")

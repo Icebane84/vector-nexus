@@ -1,0 +1,25 @@
+[gd_scene load_steps=5 format=3 uid="uid://ch5sjig1diaf8"]
+
+[ext_resource type="Script" path="res://scripts/ui/COMM.World.LootDrop.gd" id="1_pl5xy"]
+[ext_resource type="Script" path="res://scripts/components/interactables/COMP.World.Interactable.gd" id="2_32x6h"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_sldfs"]
+
+[sub_resource type="CapsuleShape3D" id="CapsuleShape3D_0re6e"]
+
+[node name="CanvasLayer" type="CanvasLayer"]
+
+[node name="LootDrop" type="RigidBody3D" parent="." node_paths=PackedStringArray("interactable_component")]
+script = ExtResource("1_pl5xy")
+interactable_component = NodePath("InteractableComponent")
+
+[node name="MeshInstance3D" type="MeshInstance3D" parent="LootDrop"]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LootDrop"]
+shape = SubResource("CapsuleShape3D_sldfs")
+
+[node name="InteractableComponent" type="Area3D" parent="LootDrop"]
+script = ExtResource("2_32x6h")
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="LootDrop/InteractableComponent"]
+shape = SubResource("CapsuleShape3D_0re6e")

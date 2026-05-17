@@ -1,0 +1,78 @@
+{
+  "Phoenix-Pure State": {
+    "prefix": "phoenix-state",
+    "body": [
+      "extends State",
+      "class_name ${1:NewState}",
+      "",
+      "func enter() -> void:",
+      "\t${2:pass}",
+      "",
+      "func exit() -> void:",
+      "\t${3:pass}",
+      "",
+      "func physics_update(delta: float) -> void:",
+      "\t${4:pass}"
+    ],
+    "description": "Generates a Phoenix-Pure state node boilerplate"
+  },
+  "Phoenix Component": {
+    "prefix": "phoenix-component",
+    "body": [
+      "extends Node",
+      "class_name ${1:NewComponent}",
+      "",
+      "@export var active: bool = true",
+      "",
+      "func _ready() -> void:",
+      "\t${2:pass}",
+      "",
+      "func ${3:do_action}() -> void:",
+      "\t${4:pass}"
+    ],
+    "description": "Generates a Sovereign component boilerplate"
+  },
+  "Phoenix Backing Field": {
+    "prefix": "phoenix-backing-field",
+    "body": [
+      "var ${1:property_name}: ${2:type} :",
+      "\tset(value):",
+      "\t\t${1:property_name} = value",
+      "\t\t${3:on_property_changed}()",
+      "\tget:",
+      "\t\treturn ${1:property_name}"
+    ],
+    "description": "SKILL-001: Implements a property with a backing field and setter/getter"
+  },
+  "Phoenix Atomic Timer": {
+    "prefix": "phoenix-atomic-timer",
+    "body": [
+      "@onready var ${1:timer_name}: Timer = $${1:timer_name}",
+      "",
+      "func _init_atomic_timer() -> void:",
+      "\t${1:timer_name}.one_shot = true",
+      "\t${1:timer_name}.timeout.connect(${2:_on_timer_timeout})"
+    ],
+    "description": "SKILL-003: Implements an atomic timer pattern"
+  },
+  "Phoenix Signal Bus": {
+    "prefix": "phoenix-signal-bus",
+    "body": [
+      "func _connect_signals() -> void:",
+      "\t_GameEvents.${1:signal_name}.connect(${2:_on_event_received})",
+      "",
+      "func ${2:_on_event_received}(${3:params}) -> void:",
+      "\t${4:pass}"
+    ],
+    "description": "SKILL-004: Connects to the Global Synapse signal bus"
+  },
+  "Phoenix Method Bind": {
+    "prefix": "phoenix-method-bind",
+    "body": [
+      "func _safe_bind() -> void:",
+      "\tif ${1:node}.has_method(\"${2:method_name}\"):",
+      "\t\t${1:node}.call(\"${2:method_name}\", ${3:args})"
+    ],
+    "description": "SKILL-005: Implements safe method binding/calling"
+  }
+}

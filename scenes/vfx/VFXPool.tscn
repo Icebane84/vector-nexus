@@ -1,0 +1,6 @@
+[gd_scene format=3 uid="uid://c1bjufvfile7o"]
+
+[ext_resource type="Script" path="res://scripts/systems/FABRIC.System.VFXPool.gd" id="1_v6iku"]
+
+[node name="VFXPool" type="Node3D" unique_id=1722238787]
+script = ExtResource("1_v6iku")

@@ -1,0 +1,5 @@
+# PHOENIX ARTIFACT: boss-stance-system
+# V-CONTROL: 2026-05-13T22:15:00Z
+interface:
+  display_name: "Boss Stance System"
+  short_description: "Phoenix-Class automation substrate for stance-break and cinematic hit-stop logic."
