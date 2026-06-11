@@ -6,7 +6,6 @@
 extends "res://scripts/entities/player/states/COMM.Avatar.State.ActionBlock.gd"
 class_name PlayerParryState
 
-const PlayerActionBlockState = preload("res://scripts/entities/player/states/COMM.Avatar.State.ActionBlock.gd")
 
 var _duration: float = 0.3
 @export var duration: float:
@@ -20,17 +19,17 @@ func enter(_msg: Dictionary = {}) -> void:
 	super.enter(_msg)
 	_timer = duration
 	
-	if animation_tree:
-		var playback: AnimationNodeStateMachinePlayback = animation_tree.get(&"parameters/playback") as AnimationNodeStateMachinePlayback
-		if playback: playback.travel(&"parry")
-
-	elif anim:
-		if anim.has_animation(&"parry"):
-			anim.play(&"parry")
-		else:
-			push_warning("Parry animation 'parry' not found. Using fallback.")
-			if anim.has_animation(&"idle"):
-				anim.play(&"idle")
+	if animation_tree and animation_tree.active:
+		if actor and actor.has_signal(&"parry_started"):
+			actor.parry_started.emit()
+	else:
+		if anim:
+			if anim.has_animation(&"parry"):
+				anim.play(&"parry")
+			else:
+				push_warning("Parry animation 'parry' not found. Using fallback.")
+				if anim.has_animation(&"idle"):
+					anim.play(&"idle")
 
 	
 	# SKILL-010: Buffer check

@@ -45,7 +45,7 @@ shape = SubResource("CapsuleShape3D_player")
 
 [node name="PlayerVisuals" parent="Visuals" unique_id=1445723244 instance=ExtResource("2_vty87")]
 
-[node name="Skeleton3D" parent="Visuals/PlayerVisuals/JuiceNode/Model/Armature" index="0"]
+[node name="GeneralSkeleton" parent="Visuals/PlayerVisuals/JuiceNode/Model/godot_rig" index="0"]
 bones/1/rotation = Quaternion(-0.0607301, 4.661854e-07, -7.662104e-06, 0.9981542)
 bones/4/rotation = Quaternion(0.060534514, -7.2197383e-07, 3.4469663e-06, 0.99816614)
 bones/9/rotation = Quaternion(0.48000714, 0.5744515, -0.5201971, 0.41108835)
@@ -83,12 +83,6 @@ bones/53/rotation = Quaternion(-0.019654717, 0.075960234, 0.021946121, 0.9966755
 bones/54/rotation = Quaternion(0.013304228, 2.270591e-07, -1.0338597e-07, 0.9999115)
 bones/55/rotation = Quaternion(0.007792342, -3.095869e-07, 2.5542298e-07, 0.99996966)
 bones/57/rotation = Quaternion(-7.548002e-08, -0.02175731, 0.9997633, 1.6426309e-09)
-bones/58/rotation = Quaternion(-0.01808578, 0.000106104795, 0.005911545, 0.999819)
-bones/59/rotation = Quaternion(0.46075168, 0.0025114429, -0.015330936, 0.8873931)
-bones/62/rotation = Quaternion(-7.548002e-08, -0.02175731, 0.9997633, 1.6426309e-09)
-bones/63/rotation = Quaternion(-0.018085778, -0.00010625578, -0.0059115477, 0.999819)
-bones/64/rotation = Quaternion(0.46075168, -0.0025114429, 0.015330936, 0.8873931)
-bones/65/rotation = Quaternion(0.33948696, -0.003857264, -0.010686648, 0.94054216)
 
 [node name="AnimationTree" type="AnimationTree" parent="." unique_id=1842424989]
 root_node = NodePath("../Visuals/PlayerVisuals/JuiceNode/Model")

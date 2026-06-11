@@ -9,14 +9,13 @@ func enter(_msg: Dictionary = {}) -> void:
 	if animation_tree:
 		var playback: AnimationNodeStateMachinePlayback = animation_tree.get(&"parameters/playback") as AnimationNodeStateMachinePlayback
 		if playback: playback.travel(&"idle")
-	elif anim: 
+	elif anim and anim.has_animation(&"idle"):
 		anim.play(&"idle")
-		
+
 	if actor: actor.velocity = Vector3.ZERO
 
 func physics_update(_delta: float) -> void:
 	if not is_instance_valid(actor): return
-	
 
 	var input := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
 	if input.length() > 0:
@@ -32,7 +31,7 @@ func physics_update(_delta: float) -> void:
 	if input.length() > 0.1:
 		state_machine.transition_to(&"Move")
 		return
-	
+
 	if Input.is_action_just_pressed(&"attack"):
 		state_machine.transition_to(&"Attack")
 		return

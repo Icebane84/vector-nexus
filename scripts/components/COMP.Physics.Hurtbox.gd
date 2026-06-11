@@ -37,6 +37,22 @@ func receive_damage(attack: AttackData) -> void:
 		_handle_parry(attack)
 		return
 
+	if owner and "guarding" in owner and owner.guarding:
+		if owner.has_signal(&"block_started"):
+			owner.block_started.emit()
+		
+		# Reduce damage by 80% and poise damage by 50%
+		var blocked_damage := attack.damage * 0.2
+		var blocked_poise := attack.poise_damage * 0.5
+		
+		var blocked_attack = attack.duplicate() as AttackData
+		blocked_attack.damage = blocked_damage
+		blocked_attack.poise_damage = blocked_poise
+		
+		_apply_impact(blocked_attack)
+		hit_received.emit(blocked_attack)
+		return
+
 	_apply_impact(attack)
 	hit_received.emit(attack)
 

@@ -55,9 +55,9 @@ func _setup_bridge() -> void:
 
 	if detection_component:
 		if detection_component.has_signal("target_acquired"):
-			detection_component.target_acquired.connect(func(t): target = t)
+			detection_component.target_acquired.connect(_on_target_acquired_triggered)
 		if detection_component.has_signal("target_lost"):
-			detection_component.target_lost.connect(func(): target = null)
+			detection_component.target_lost.connect(_on_target_lost_triggered)
 
 func _on_death() -> void:
 	# PHOENIX-GVRN: Clean teardown and global notification
@@ -94,3 +94,9 @@ func _physics_process(_delta: float) -> void:
 		velocity.y -= ProjectSettings.get_setting("physics/3d/default_gravity") * _delta
 
 	move_and_slide()
+
+func _on_target_acquired_triggered(t):
+	target = t
+
+func _on_target_lost_triggered():
+	target = null

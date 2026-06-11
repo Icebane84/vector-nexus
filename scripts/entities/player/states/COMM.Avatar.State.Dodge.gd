@@ -25,6 +25,11 @@ var _dodge_dir: Vector3 = Vector3.ZERO
 func enter(_msg: Dictionary = {}) -> void:
 	super.enter(_msg)
 	_timer = duration
+	
+	if actor.has_signal(&"dodge_started"):
+		actor.dodge_started.emit()
+	actor.strafing = false
+	
 	ActionLib.play_state_animation(animation_tree, anim, &"dodge")
 	
 	if hurtbox: hurtbox.is_invincible = true
@@ -44,7 +49,7 @@ func exit() -> void:
 	if hurtbox: hurtbox.is_invincible = false
 
 func _calculate_dodge_dir() -> Vector3:
-	var input := Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
+	var input: Vector2 = actor.get_movement_input() if actor.has_method(&"get_movement_input") else Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
 	if input.length() > 0.1:
 		return MoveLib.get_camera_relative_dir(input, camera)
 	return Orient.get_facing_dir(actor)

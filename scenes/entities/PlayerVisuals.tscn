@@ -1,6 +1,6 @@
 [gd_scene format=3 uid="uid://dos2ot6jqa6hj"]
 
-[ext_resource type="PackedScene" uid="uid://bkkqq7jcpjpeb" path="res://assets/Models/Model.glb" id="1_38yvy"]
+[ext_resource type="PackedScene" path="res://assets/Models/minnyquinn.glb" id="1_38yvy"]
 
 [node name="PlayerVisuals" type="Node3D" unique_id=1445723244]
 
@@ -9,7 +9,7 @@
 [node name="Model" parent="JuiceNode" unique_id=637621837 instance=ExtResource("1_38yvy")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -0.23386401, 0, 0)
 
-[node name="Skeleton3D" parent="JuiceNode/Model/Armature" index="0"]
+[node name="GeneralSkeleton" parent="JuiceNode/Model/godot_rig" index="0"]
 bones/0/position = Vector3(3.7897266e-07, 5.1885843e-05, -99.792015)
 bones/0/rotation = Quaternion(-0.7071068, -1.9496895e-08, -2.0750822e-08, 0.7071068)
 bones/1/position = Vector3(9.623902e-11, 9.923461, -1.2273343)
@@ -101,12 +101,5 @@ bones/55/position = Vector3(-0.00093786424, 2.5948312, -2.0416774e-06)
 bones/55/rotation = Quaternion(1.1345384e-06, -7.305948e-06, -0.0005958499, 0.9999999)
 bones/56/position = Vector3(-0.0044827163, 2.923869, 9.556234e-06)
 bones/57/rotation = Quaternion(-0.000112198395, -0.006336459, 0.9999754, 0.0030141089)
-bones/58/rotation = Quaternion(-0.01814385, 0.00019539126, 0.005909912, 0.99981797)
-bones/59/rotation = Quaternion(0.4470543, 0.0034863055, -0.012615024, 0.89441115)
-bones/60/rotation = Quaternion(0.33948684, 0.0038573518, 0.0106866555, 0.9405422)
-bones/62/rotation = Quaternion(0.00011195197, -0.0063674124, 0.9999752, -0.00301416)
-bones/63/rotation = Quaternion(-0.018082105, -0.00019572898, -0.0059099463, 0.99981904)
-bones/64/rotation = Quaternion(0.44702682, -0.0034859022, 0.0126151545, 0.8944249)
-bones/65/rotation = Quaternion(0.33948684, -0.0038572694, -0.010686628, 0.9405422)
 
 [editable path="JuiceNode/Model"]

@@ -6,7 +6,6 @@
 extends "res://scripts/entities/player/states/COMM.Avatar.State.ActionBlock.gd"
 class_name PlayerStaggerState
 
-const PlayerActionBlockState = preload("res://scripts/entities/player/states/COMM.Avatar.State.ActionBlock.gd")
 
 var _duration: float = 0.6
 @export var duration: float:
@@ -18,13 +17,17 @@ var _timer: float = 0.0
 func enter(_msg: Dictionary = {}) -> void:
 	super.enter(_msg)
 	_timer = duration
-	if anim:
-		if anim.has_animation(&"stagger"):
-			anim.play(&"stagger")
-		else:
-			# Fallback if stagger is missing
-			if anim.has_animation(&"idle"):
-				anim.play(&"idle")
+	if animation_tree and animation_tree.active:
+		if actor and actor.has_signal(&"hurt_started"):
+			actor.hurt_started.emit()
+	else:
+		if anim:
+			if anim.has_animation(&"stagger"):
+				anim.play(&"stagger")
+			else:
+				# Fallback if stagger is missing
+				if anim.has_animation(&"idle"):
+					anim.play(&"idle")
 
 	
 	# Clear any buffered inputs on stagger to avoid "Ghost Attacks" after stun

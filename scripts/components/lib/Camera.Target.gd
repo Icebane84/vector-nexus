@@ -38,7 +38,7 @@ static func find_flick_target(origin: Vector3, camera: Camera3D, current: Node3D
 				best_target = t
 	return best_target
 
-static func _is_valid_candidate(t: Node, origin: Vector3, camera: Camera3D) -> bool:
+static func _is_valid_candidate(t: Node, _origin: Vector3, camera: Camera3D) -> bool:
 	if not is_instance_valid(t) or not t is Node3D: return false
 	if camera.is_position_behind(t.global_position): return false
 	return true

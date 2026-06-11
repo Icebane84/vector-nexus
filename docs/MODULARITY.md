@@ -1,6 +1,6 @@
 # MODULARITY & PORTABILITY GUIDE (v1.0)
 
-@GOVERNED_BY: [[.agent/GVRN.Master.Registry.md]]
+@GOVERNED_BY: [MASTER_REGISTRY.md](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/tools/registry/MASTER_REGISTRY.md)
 
 ## 1. THE SOVEREIGN INTERFACE PRINCIPLE
 
@@ -21,7 +21,7 @@ To connect a modular component to the Global Synapse (UI/Game State), use a Brid
 ### Example (Player Bridge)
 
 ```gdscript
-# Inside Player.gd _ready()
+# Inside [COMM.Avatar.Player.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/entities/player/COMM.Avatar.Player.gd) _ready()
 health_component.health_changed.connect(
     func(cur, max): GameEvents.instance.player_health_changed.emit(cur, max)
 )

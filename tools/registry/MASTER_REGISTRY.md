@@ -12,16 +12,17 @@
 
 ## 🏗️ SYSTEMIC NODES (SOUL)
 
-| Artifact                   | URI                                     | State       | Integrity   |
-| :------------------------- | :-------------------------------------- | :---------- | :---------- |
-| **Operational Directive**  | [[AGENTS.md]]                           | [CANONIZED] | [ALPHA-Ω]   |
-| **Technical Skills**       | [[tools/registry/SKILL_LIBRARY.md]]     | [CANONIZED] | [ALPHA-Ω]   |
-| **Visual Cortex**          | [[tools/python/agent/tscn_analyzer.py]] | [CANONIZED] | [ALPHA-Ω]   |
-| **Lore Master**            | [[tools/python/agent/sync_blackboard.py]] | [CANONIZED] | [ALPHA-Ω]   |
-| **Context Snapshot**       | [[context_export.txt]]                  | [AUTOMATED] | [PHOENIX]   |
-| **Architecture Blueprint** | [[docs/ARCHITECTURE.md]]                | [CANONIZED] | [ALPHA-Ω]   |
-| **Error Resolution Plan**  | [[error-resolution-plan.md]]            | [CANONIZED] | [SOVEREIGN] |
-| **Sanity Check Tool**      | [[tools/godot/verification/ProjectSanityCheck.gd]] | [CANONIZED] | [SKILL-014] |
+| Artifact                         | URI                                                | State       | Integrity   |
+| :------------------------------- | :------------------------------------------------- | :---------- | :---------- |
+| **Operational Directive**        | [[AGENTS.md]]                                      | [CANONIZED] | [ALPHA-Ω]   |
+| **Technical Skills**             | [[tools/registry/SKILL_LIBRARY.md]]                | [CANONIZED] | [ALPHA-Ω]   |
+| **Visual Cortex**                | [[tools/python/agent/capture_simulation.py]]       | [CANONIZED] | [ALPHA-Ω]   |
+| **Lore Master**                  | [[tools/python/agent/sync_blackboard.py]]          | [CANONIZED] | [ALPHA-Ω]   |
+| **Context Snapshot**             | [[context_export.txt]]                             | [AUTOMATED] | [PHOENIX]   |
+| **Architecture Blueprint**       | [[docs/ARCHITECTURE.md]]                           | [CANONIZED] | [ALPHA-Ω]   |
+| **Sovereign Bridge Walkthrough** | [[docs/Sovereign Bridge Architecture.md]]          | [CANONIZED] | [ALPHA-Ω]   |
+| **Error Resolution Plan**        | [[error-resolution-plan.md]]                       | [CANONIZED] | [SOVEREIGN] |
+| **Sanity Check Tool**            | [[tools/godot/verification/ProjectSanityCheck.gd]] | [CANONIZED] | [SKILL-014] |
 
 ---
 
@@ -32,6 +33,7 @@
 | **Backing Fields**     | [[scripts/components/COMP.Physics.Health.gd]] | [CANONIZED] | [SKILL-001] |
 | **Global Synapse**     | [[scripts/globals/CORE.Kernel.GameEvents.gd]] | [CANONIZED] | [SKILL-004] |
 | **Director Gateway**   | [[scripts/globals/CORE.Kernel.Director.gd]]   | [CANONIZED] | [SKILL-007] |
+| **Global Logger**      | [[scripts/globals/CORE.Log.GlobalLogger.gd]]  | [CANONIZED] | [SKILL-021] |
 | **Pure State Machine** | [[scripts/entities/shared/states/]]           | [CANONIZED] | [SKILL-008] |
 
 ---

@@ -10,7 +10,7 @@ def run_audit():
     """Runs the governance guard and returns the violation data."""
     print("--- RUNNING GOVERNANCE AUDIT ---")
     result = subprocess.run(
-        ["python", ".agent/governance_guard.py", "--json"],
+        ["C:\\DevEnvironments\\master_env\\Scripts\\python.exe", "tools/python/agent/governance_guard.py", "--json"],
         capture_output=True,
         text=True,
         check=False,
@@ -42,7 +42,7 @@ def apply_refactor(violation):
 
         print(f"Applying SKILL-001 to {var_name} in {path}")
         subprocess.run(
-            ["python", ".agent/soul_forge.py", "backing-field", path, var_name],
+            ["C:\\DevEnvironments\\master_env\\Scripts\\python.exe", "tools/python/agent/soul_forge.py", "backing-field", path, var_name],
             check=False,
         )
         return True
@@ -51,7 +51,7 @@ def apply_refactor(violation):
         line = violation["line"]
         print(f"Applying SKILL-005 to connection at {path}:{line}")
         subprocess.run(
-            ["python", ".agent/soul_forge.py", "named-callback", path, str(line)],
+            ["C:\\DevEnvironments\\master_env\\Scripts\\python.exe", "tools/python/agent/soul_forge.py", "named-callback", path, str(line)],
             check=False
         )
         return True

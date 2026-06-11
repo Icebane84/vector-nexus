@@ -6,7 +6,7 @@
 extends "res://scripts/entities/player/states/COMM.Avatar.State.ActionBlock.gd"
 class_name PlayerJumpState
 
-const PlayerActionBlockState = preload("res://scripts/entities/player/states/COMM.Avatar.State.ActionBlock.gd")
+
 
 var _jump_force: float = 4.5
 @export var jump_force: float:
@@ -16,11 +16,14 @@ var _jump_force: float = 4.5
 
 func enter(_msg: Dictionary = {}) -> void:
 	super.enter(_msg)
+	
+	if actor.has_signal(&"jump_started"):
+		actor.jump_started.emit()
+		
 	if anim:
 		if anim.has_animation(&"jump"):
 			anim.play(&"jump")
-		else:
-			# Fallback to idle if jump animation is missing
+		elif anim.has_animation(&"idle"):
 			anim.play(&"idle")
 	
 	actor.velocity.y = jump_force

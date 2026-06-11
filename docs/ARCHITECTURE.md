@@ -8,9 +8,9 @@ The project utilizes Autoload singletons to manage persistent state and cross-do
 
 ### Core Singletons / Nodes
 
-- **`Director.gd`**: Central reference gateway. The brain of the project. It explicitly _does not_ instantiate logic; instead, it holds persistent pointers to vital active nodes (like `player_health_component`, `quest_system`, `vfx_pool`). Use this to avoid `get_node` lookups.
-- **`GameEvents.gd`**: The **Sovereign Signal Bus**. A detached Signal Bus used exclusively for multi-domain state changes (e.g., `player_died`, `item_collected`) where binding direct instances violates isolated component composition.
-- **`Log.gd`**: Unified output stream for multi-severity diagnostics. Formats and unifies `stdout` emissions based on severity types `info`, `warn`, `error`, and `wow` (cinematic logging).
+- **[CORE.Kernel.Director.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/globals/CORE.Kernel.Director.gd)**: Central reference gateway. The brain of the project. It explicitly _does not_ instantiate logic; instead, it holds persistent pointers to vital active nodes (like `player_health_component`, `quest_system`, `vfx_pool`). Use this to avoid `get_node` lookups.
+- **[CORE.Kernel.GameEvents.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/globals/CORE.Kernel.GameEvents.gd)**: The **Sovereign Signal Bus**. A detached Signal Bus used exclusively for multi-domain state changes (e.g., `player_died`, `item_collected`) where binding direct instances violates isolated component composition.
+- **[CORE.Log.GlobalLogger.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/globals/CORE.Log.GlobalLogger.gd)**: Unified output stream for multi-severity diagnostics. Formats and unifies `stdout` emissions based on severity types `info`, `warn`, `error`, and `wow` (cinematic logging).
 
 ### Dependency Graph (Globals)
 
@@ -68,10 +68,10 @@ Ashen Oath uses a composition-based approach for combat and character logic, hea
 
 ### Primary Components
 
-- **`AttributeComponent`**: Manages base stats (Strength, Vitality).
-- **`HealthComponent`**: Handles damage, healing, and death signals. Implements **SKILL-001 (Backing Fields)**.
-- **`HurtboxComponent`**: The receiver for collision damage. Links to `HealthComponent`.
-- **`HitboxComponent`**: The emitter for collision damage. Implements **SKILL-009 (One-Shot Hitbox)**.
+- **[COMP.Stats.Attribute.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/components/COMP.Stats.Attribute.gd)**: Manages base stats (Strength, Vitality).
+- **[COMP.Physics.Health.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/components/COMP.Physics.Health.gd)**: Handles damage, healing, and death signals. Implements **SKILL-001 (Backing Fields)**.
+- **[COMP.Physics.Hurtbox.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/components/COMP.Physics.Hurtbox.gd)**: The receiver for collision damage. Links to `COMP.Physics.Health.gd`.
+- **[COMP.Physics.Hitbox.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/components/COMP.Physics.Hitbox.gd)**: The emitter for collision damage. Implements **SKILL-009 (One-Shot Hitbox)**.
 
 ### Component Topology Map
 
@@ -129,9 +129,9 @@ According to the Ashen Oath implementation guides (**SKILL-008: The Phoenix-Pure
 
 ### Player States
 
-- **`PlayerIdleState`**: Default state, monitors movement input.
-- **`PlayerMoveState`**: Handles locomotion and rotation. Implements **SKILL-011 (Action-Matrix)**.
-- **`PlayerAttackState`**: Handles combat animations and hitbox activation. Implements **SKILL-008 (Phoenix-Pure)**.
+- **[COMM.Avatar.State.Idle.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/entities/player/states/COMM.Avatar.State.Idle.gd)** (`PlayerIdleState`): Default state, monitors movement input.
+- **[COMM.Avatar.State.Move.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/entities/player/states/COMM.Avatar.State.Move.gd)** (`PlayerMoveState`): Handles locomotion and rotation. Implements **SKILL-011 (Action-Matrix)**.
+- **[COMM.Avatar.State.Attack.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/entities/player/states/COMM.Avatar.State.Attack.gd)** (`PlayerAttackState`): Handles combat animations and hitbox activation. Implements **SKILL-008 (Phoenix-Pure)**.
 
 ### State Machine Graph
 
@@ -173,9 +173,10 @@ To ensure reliable Action/RPG inputs (**SKILL-010**), inputs acquired during `Ac
 
 ## 4. Systems & Optimization
 
-- **`VFXPool`**: Zero-allocation pool for visual effects (**SKILL-002**).
-- **`AudioPool`**: High-frequency SFX management with randomized pitch scaling.
+- **[FABRIC.System.VFXPool.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/systems/FABRIC.System.VFXPool.gd)** (`VFXPool`): Zero-allocation pool for visual effects (**SKILL-002**).
+- **[FABRIC.System.AudioSystem.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/systems/FABRIC.System.AudioSystem.gd)** (`AudioSystem`): The Aural Director that manages spatial and static audio pools (**SKILL-002**).
 
 ---
+
 **Status**: PRS-001 Conceptual Engineering Phase COMPLETE.
 **Governed By**: [AGENTS.md](../AGENTS.md) | [SKILL_LIBRARY.md](../tools/registry/SKILL_LIBRARY.md)

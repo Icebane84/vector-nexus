@@ -22,7 +22,7 @@ config/icon="res://icon.svg"
 [autoload]
 
 _Director="*res://scripts/globals/CORE.Kernel.Director.gd"
-Log="*res://scripts/globals/CORE.Log.GlobalLogger.gd"
+_Log="*res://scripts/globals/CORE.Log.GlobalLogger.gd"
 _GameEvents="*res://scripts/globals/CORE.Kernel.GameEvents.gd"
 
 [editor_plugins]

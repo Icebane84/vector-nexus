@@ -42,7 +42,7 @@ In Godot, scripts talk to nodes in three primary ways.
 This Is the most flexible. You define a variable in the script and click/drag the node in the **Inspector**.
 
 ```gdscript
-# Player.gd
+# [COMM.Avatar.Player.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/entities/player/COMM.Avatar.Player.gd)
 @export var camera_pivot: SpringArm3D
 @export var health_node: HealthComponent
 ```
@@ -78,7 +78,7 @@ func _hurt():
 If your camera swings wildly, it’s usually because the **Player** is rotating and the **Camera** is inheriting that rotation (Double Rotation).
 
 1. Set the Camera node to `Top Level = true` in the Inspector.
-2. Use the following logic in `PlayerCamera.gd` (already attempting this in v16.0):
+2. Use the following logic in [COMM.Avatar.PlayerCamera.gd](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scripts/entities/player/COMM.Avatar.PlayerCamera.gd) (already attempting this in v16.0):
 
 ```gdscript
 func _physics_process(delta):
@@ -93,7 +93,7 @@ If you see black geometric strings, your model's **Scaling** or **Bone Data** is
 1. Select your **MeshInstance3D**.
 2. Go to the **Inspector -> Transform**.
 3. Ensure Scale is `(1, 1, 1)`, NEVER `(0, 0, 0)`.
-4. Current problem in `Player.tscn`: You are using a **Boss** AnimationPlayer on the player. This often causes "bone mismatch" which looks like black strings.
+4. Current problem in [Player.tscn](file:///c:/Users/Chris/Ashen%20Oath-3rd%20Person%20RPG/scenes/entities/Player.tscn): You are using a **Boss** AnimationPlayer on the player. This often causes "bone mismatch" which looks like black strings.
 
 ---
 

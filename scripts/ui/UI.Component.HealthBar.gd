@@ -1,7 +1,6 @@
 extends ProgressBar # or TextureProgressBar
 
-const Director = preload("res://scripts/globals/CORE.Kernel.Director.gd")
-const GameEvents = preload("res://scripts/globals/CORE.Kernel.GameEvents.gd")
+
 
 func _ready() -> void:
 	# Connect to the global event bus instead of a direct reference (SKILL-004)

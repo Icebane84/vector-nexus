@@ -1,7 +1,7 @@
 [gd_scene format=3 uid="uid://ccbckcjwvrnvk"]
 
 [ext_resource type="Script" uid="uid://cy46orerrnovq" path="res://scripts/entities/player/COMM.Avatar.Player.gd" id="1_Player"]
-[ext_resource type="PackedScene" uid="uid://bkkqq7jcpjpeb" path="res://assets/Models/Model.glb" id="2_deer0"]
+[ext_resource type="PackedScene" path="res://assets/Models/minnyquinn.glb" id="2_deer0"]
 [ext_resource type="Script" uid="uid://cxwhusfnfw8xl" path="res://scripts/entities/player/COMM.Avatar.PlayerCamera.gd" id="2_PlayerCamera"]
 [ext_resource type="Script" uid="uid://g7udp3dpgajr" path="res://scripts/components/COMP.Physics.Health.gd" id="3_HealthComponent"]
 [ext_resource type="Script" uid="uid://yo76xuqg5an3" path="res://scripts/components/COMP.Stats.Stamina.gd" id="4_StaminaComponent"]
@@ -54,7 +54,7 @@ shape = SubResource("CapsuleShape3D_player")
 
 [node name="Model" parent="Visuals/PlayerVisuals/JuiceNode" unique_id=637621837 instance=ExtResource("2_deer0")]
 
-[node name="Skeleton3D" parent="Visuals/PlayerVisuals/JuiceNode/Model/Armature" index="0"]
+[node name="GeneralSkeleton" parent="Visuals/PlayerVisuals/JuiceNode/Model/godot_rig" index="0"]
 bones/0/position = Vector3(3.7897266e-07, 5.1885843e-05, -99.792015)
 bones/0/rotation = Quaternion(-0.7071068, -1.9496895e-08, -2.0750822e-08, 0.7071068)
 bones/1/position = Vector3(9.623902e-11, 9.923461, -1.2273343)
@@ -146,21 +146,14 @@ bones/55/position = Vector3(-0.00093786424, 2.5948312, -2.0416774e-06)
 bones/55/rotation = Quaternion(1.1345384e-06, -7.305948e-06, -0.0005958499, 0.9999999)
 bones/56/position = Vector3(-0.0044827163, 2.923869, 9.556234e-06)
 bones/57/rotation = Quaternion(-0.000112198395, -0.006336459, 0.9999754, 0.0030141089)
-bones/58/rotation = Quaternion(-0.01814385, 0.00019539126, 0.005909912, 0.99981797)
-bones/59/rotation = Quaternion(0.4470543, 0.0034863055, -0.012615024, 0.89441115)
-bones/60/rotation = Quaternion(0.33948684, 0.0038573518, 0.0106866555, 0.9405422)
-bones/62/rotation = Quaternion(0.00011195197, -0.0063674124, 0.9999752, -0.00301416)
-bones/63/rotation = Quaternion(-0.018082105, -0.00019572898, -0.0059099463, 0.99981904)
-bones/64/rotation = Quaternion(0.44702682, -0.0034859022, 0.0126151545, 0.8944249)
-bones/65/rotation = Quaternion(0.33948684, -0.0038572694, -0.010686628, 0.9405422)
 
 [node name="AnimationTree" type="AnimationTree" parent="." unique_id=1842424989]
 root_node = NodePath("../Visuals/PlayerVisuals/JuiceNode/Model")
-root_motion_track = NodePath("Armature/Skeleton3D:mixamorig_Hips")
+root_motion_track = NodePath("Armature/GeneralSkeleton:Root")
 root_motion_local = true
 tree_root = SubResource("AnimationRootNode_gpcb7")
 advance_expression_base_node = NodePath("../StateMachine")
-anim_player = NodePath("Visuals/PlayerVisuals/JuiceNode/Model/AnimationPlayer")
+anim_player = NodePath("../Visuals/PlayerVisuals/JuiceNode/Model/AnimationPlayer")
 
 [node name="CameraPivot" type="Node3D" parent="." unique_id=1879490104]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, 0)

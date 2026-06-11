@@ -37,6 +37,34 @@ var target: Node3D:
 			clear_excluded_objects()
 			add_excluded_object(target.get_rid())
 
+const NORMAL_FOV: float = 75.0
+const SPRINT_FOV: float = 85.0
+
+var _trauma: float = 0.0
+var trauma: float:
+	get: return _trauma
+	set(v): _trauma = clampf(v, 0.0, 1.0)
+
+var _trauma_decay: float = 2.0
+var trauma_decay: float:
+	get: return _trauma_decay
+	set(v): _trauma_decay = v
+
+var _max_yaw_shake: float = 5.0
+var max_yaw_shake: float:
+	get: return _max_yaw_shake
+	set(v): _max_yaw_shake = v
+
+var _max_pitch_shake: float = 5.0
+var max_pitch_shake: float:
+	get: return _max_pitch_shake
+	set(v): _max_pitch_shake = v
+
+var _smooth_speed: float = 10.0
+@export var smooth_speed: float:
+	get: return _smooth_speed
+	set(v): _smooth_speed = v
+
 var _camera: Camera3D
 var lock_on: LockOnComp
 
@@ -95,3 +123,25 @@ func _physics_process(delta: float) -> void:
 
 	if is_instance_valid(lock_on.current_target):
 		CamProc.track_target(self, lock_on.current_target, delta)
+
+	# --- Kaelen / Witness Camera Integration ---
+	if _camera:
+		# 1. FOV Scaling on Sprint (Adrenaline effect)
+		var target_fov: float = NORMAL_FOV
+		if InputMap.has_action(&"sprint") and Input.is_action_pressed(&"sprint"):
+			target_fov = SPRINT_FOV
+		elif InputMap.has_action(&"dodge") and Input.is_action_pressed(&"dodge"):
+			target_fov = SPRINT_FOV
+		_camera.fov = lerp(_camera.fov, target_fov, delta * smooth_speed)
+		
+		# 2. Screenshake / Trauma process
+		if trauma > 0.0:
+			trauma = maxf(trauma - trauma_decay * delta, 0.0)
+			var shake: float = trauma * trauma
+			_camera.rotation_degrees.y = randf_range(-max_yaw_shake, max_yaw_shake) * shake
+			_camera.rotation_degrees.x = randf_range(-max_pitch_shake, max_pitch_shake) * shake
+		else:
+			_camera.rotation_degrees = Vector3.ZERO
+
+func apply_trauma(amount: float) -> void:
+	trauma = clampf(trauma + amount, 0.0, 1.0)

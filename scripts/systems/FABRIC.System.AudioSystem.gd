@@ -7,7 +7,11 @@ extends Node
 class_name AudioSystem
 
 @export_group("Pool Settings")
-@export var spatial_pool_size: int = 16
+var _spatial_pool_size: int = 16
+@export var spatial_pool_size: int:
+	get: return _spatial_pool_size
+	set(v):
+		_spatial_pool_size = v
 @export var static_pool_size: int = 8
 
 var _spatial_pool: Array[AudioStreamPlayer3D] = []

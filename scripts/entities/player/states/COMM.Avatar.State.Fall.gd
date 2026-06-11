@@ -6,14 +6,14 @@
 extends "res://scripts/entities/player/states/COMM.Avatar.State.ActionBlock.gd"
 class_name PlayerFallState
 
-const PlayerActionBlockState = preload("res://scripts/entities/player/states/COMM.Avatar.State.ActionBlock.gd")
+
 
 func enter(_msg: Dictionary = {}) -> void:
 	super.enter(_msg)
 	if anim:
 		if anim.has_animation(&"fall"):
 			anim.play(&"fall")
-		else:
+		elif anim.has_animation(&"idle"):
 			anim.play(&"idle")
 
 func physics_update(delta: float) -> void:
@@ -34,6 +34,8 @@ func physics_update(delta: float) -> void:
 
 
 	if actor.is_on_floor():
+		if actor.has_signal(&"landed_fall"):
+			actor.landed_fall.emit("SOFT")
 		if input.length() > 0.1:
 			state_machine.transition_to(&"Move")
 		else:
