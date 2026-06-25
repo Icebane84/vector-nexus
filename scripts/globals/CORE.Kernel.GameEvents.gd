@@ -24,6 +24,9 @@ signal enemy_instantiated(enemy: Node3D)
 signal impact_occurred(pos: Vector3, damage: float, poise_damage: float)
 signal parry_occurred()
 
+signal interaction_hint_shown(text: String)
+signal interaction_hint_hidden()
+
 signal spatial_sound_requested(stream: AudioStream, position: Vector3, volume_db: float, pitch_var: float)
 signal vfx_requested(vfx_id: StringName, position: Vector3, normal: Vector3)
 signal quest_system_ready(mgr: QuestManager)
@@ -33,6 +36,7 @@ signal player_health_changed(current: float, maximum: float)
 signal player_mana_changed(current: float, maximum: float)
 signal player_stamina_changed(current: float, maximum: float)
 signal player_sanity_changed(current: float, maximum: float)
+signal player_active_item_changed(item: ItemData)
 
 # --- Universal Event Bus ---
 signal game_state_changed(new_state: int) # T.GameState
@@ -44,3 +48,10 @@ signal core_awaken
 signal synergy_fire(payload: Dictionary)
 signal coherence_ripple(intensity: float)
 signal aural_echo(type: String)
+
+# --- Locomotion Events [COMP.Locomotion] ---
+## Emitted by FootstepAudioComponent when a foot contacts the ground.
+## Consumers: VFX dust spawners, surface-type detectors.
+signal footstep_occurred(position: Vector3, surface_normal: Vector3)
+## Emitted by FootstepAudioComponent when a foot leaves the ground.
+signal foot_lifted_occurred()

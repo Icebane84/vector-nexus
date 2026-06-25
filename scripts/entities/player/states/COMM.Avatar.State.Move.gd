@@ -27,17 +27,23 @@ func physics_update(delta: float) -> void:
 	if _check_environmental_transitions(): return
 
 	var input: Vector2 = actor.get_movement_input() if actor.has_method(&"get_movement_input") else Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
-	if input.length() < 0.1:
-		_handle_idle_transition()
-		return
-
-	actor.input_dir = input
-	var move_dir: Vector3 = MoveLib.get_camera_relative_dir(input, camera)
 	
+	# Determine movement direction
+	var move_dir := Vector3.ZERO
+	if input.length() >= 0.1:
+		actor.input_dir = input
+		move_dir = MoveLib.get_camera_relative_dir(input, camera)
+	else:
+		actor.input_dir = Vector2.ZERO
+		_handle_idle_transition()
+
 	var target_locked: Node3D = null
 	if camera and camera.lock_on and is_instance_valid(camera.lock_on.current_target):
 		target_locked = camera.lock_on.current_target
 		
+	# Store previous rotation for turn leaning
+	var prev_rot_y = actor.visuals.rotation.y
+
 	if target_locked:
 		actor.strafing = true
 		var face_dir: Vector3 = (target_locked.global_position - actor.global_position).normalized()
@@ -48,7 +54,14 @@ func physics_update(delta: float) -> void:
 		actor.move_dot_product = forward_vector.dot(move_dir)
 	else:
 		actor.strafing = false
-		Orient.apply_lerped_rotation(actor, move_dir, rotation_speed, delta)
+		if input.length() >= 0.1:
+			Orient.apply_lerped_rotation(actor, move_dir, rotation_speed, delta)
+			
+	# Procedural Lean Calculation
+	var delta_rot_y = wrapf(actor.visuals.rotation.y - prev_rot_y, -PI, PI)
+	var turn_rate = delta_rot_y / delta
+	var lean_target = clampf(turn_rate * 0.08, -0.25, 0.25) if input.length() >= 0.1 else 0.0
+	actor.visuals.rotation.z = lerp(actor.visuals.rotation.z, lean_target, 1.0 - exp(-10.0 * delta))
 		
 	_apply_movement_velocity(move_dir, delta)
 	
@@ -72,9 +85,10 @@ func _handle_idle_transition() -> void:
 func _apply_movement_velocity(dir: Vector3, delta: float) -> void:
 	var vel: Vector3 = MoveLib.get_velocity_from_root_motion(animation_tree, actor.visuals, delta)
 	if vel.length_squared() > 0.00001:
-
 		actor.velocity.x = vel.x
 		actor.velocity.z = vel.z
 	else:
-		actor.velocity.x = dir.x * speed
-		actor.velocity.z = dir.z * speed
+		# Smooth acceleration & deceleration stops using exponential lerp
+		var target_vel = dir * speed
+		actor.velocity.x = lerp(actor.velocity.x, target_vel.x, 1.0 - exp(-12.0 * delta))
+		actor.velocity.z = lerp(actor.velocity.z, target_vel.z, 1.0 - exp(-12.0 * delta))

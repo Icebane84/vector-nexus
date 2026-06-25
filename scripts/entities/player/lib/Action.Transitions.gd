@@ -22,6 +22,12 @@ static func check_standard_actions(state_machine: Node, stamina_comp: Node) -> b
     if Input.is_action_just_pressed(&"parry"):
         state_machine.transition_to(&"Parry")
         return true
+    if Input.is_action_just_pressed(&"use_item"):
+        state_machine.transition_to(&"UseItem")
+        return true
+    if Input.is_action_just_pressed(&"transform"):
+        state_machine.transition_to(&"Transform", {"to_ugs": stamina_comp.get_parent().weapon_type != "UGS"})
+        return true
         
     return false
 

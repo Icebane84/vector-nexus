@@ -1,43 +1,48 @@
-[gd_scene load_steps=15 format=3 uid="uid://erbxbm2tqrpp"]
+[gd_scene load_steps=18 format=3 uid="uid://erbxbm2tqrpp"]
 
 [ext_resource type="Script" path="res://scripts/components/sensors/COMP.AI.Detection.gd" id="1_641yr"]
+[ext_resource type="Script" path="res://scripts/components/COMP.World.Loot.gd" id="12_LootComponent"]
+[ext_resource type="Resource" path="res://resources/items/potion.tres" id="13_potion"]
+[ext_resource type="Resource" path="res://resources/items/firebomb.tres" id="14_firebomb"]
 [ext_resource type="Script" path="res://scripts/entities/enemies/COMM.Enemy.EnemyBase.gd" id="1_EnemyBase"]
 [ext_resource type="Script" path="res://scripts/components/COMP.Physics.Health.gd" id="2_HealthComponent"]
+[ext_resource type="PackedScene" path="res://assets/Models/mannyquin.glb" id="3_mannyquin"]
 [ext_resource type="Script" path="res://scripts/components/COMP.Physics.Hurtbox.gd" id="4_HurtboxComponent"]
 [ext_resource type="Script" path="res://scripts/components/state_machine/FABRIC.Logic.StateMachine.gd" id="5_StateMachine"]
 [ext_resource type="Script" path="res://scripts/entities/enemies/states/COMM.Enemy.State.Chase.gd" id="6_AIChaseState"]
-[ext_resource type="Shader" path="res://scenes/entities/EnemyBase.gdshader" id="6_h04nj"]
 [ext_resource type="Script" path="res://scripts/components/COMP.Stats.Poise.gd" id="7_4kric"]
 [ext_resource type="Script" path="res://scripts/entities/enemies/states/COMM.Enemy.State.Attack.gd" id="7_AIAttackState"]
 [ext_resource type="Script" path="res://scripts/entities/enemies/states/COMM.Enemy.State.Idle.gd" id="8_AIIdleState"]
+[ext_resource type="Script" path="res://scripts/components/COMP.Physics.Hitbox.gd" id="9_HitboxComponent"]
+[ext_resource type="Script" path="res://scripts/entities/enemies/states/COMM.Enemy.State.Death.gd" id="10_AIDeathState"]
+[ext_resource type="Script" path="res://scripts/entities/enemies/states/COMM.Enemy.State.Hurt.gd" id="11_AIHurtState"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_enemy"]
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_nicf8"]
-render_priority = 0
-shader = ExtResource("6_h04nj")
-
-[sub_resource type="ShaderMaterial" id="ShaderMaterial_2adw5"]
 
 [sub_resource type="CapsuleShape3D" id="CapsuleShape3D_nsqss"]
 radius = 10.0
 height = 10.0
 
-[sub_resource type="CapsuleMesh" id="CapsuleMesh_enemy"]
-
-[node name="EnemyBase" type="CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp", "anim", "detection_component") groups=["enemy"]]
+[node name="EnemyBase" type="CharacterBody3D" node_paths=PackedStringArray("state_machine", "nav_comp", "anim", "detection_component", "health_component", "poise_component", "hitbox_component", "hurtbox_component") groups=["enemy"]]
 script = ExtResource("1_EnemyBase")
 state_machine = NodePath("StateMachine")
 nav_comp = NodePath("NavigationComponent")
-anim = NodePath("Visuals/AnimationPlayer")
-detection_component = NodePath("DetectionComponent")
+anim = NodePath("Visuals/mannyquin/AnimationPlayer")
+health_component = NodePath("HealthComponent")
+poise_component = NodePath("PoiseComponent")
+hitbox_component = NodePath("HitboxComponent")
+hurtbox_component = NodePath("HurtboxComponent")
 
 [node name="Collision" type="CollisionShape3D" parent="."]
 shape = SubResource("CapsuleShape3D_enemy")
 
+[node name="LockOnMarker" type="Marker3D" parent="."]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.0, 0)
+
 [node name="Visuals" type="Node3D" parent="."]
 
-[node name="AnimationPlayer" type="AnimationPlayer" parent="Visuals"]
+[node name="mannyquin" parent="Visuals" instance=ExtResource("3_mannyquin")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, -1.0, 0)
 
 [node name="NavigationComponent" type="Node3D" parent="."]
 
@@ -65,10 +70,21 @@ script = ExtResource("6_AIChaseState")
 [node name="AIAttackState" type="Node" parent="StateMachine"]
 script = ExtResource("7_AIAttackState")
 
-[node name="MeshInstance3D" type="MeshInstance3D" parent="."]
-mesh = SubResource("CapsuleMesh_enemy")
-material_override = SubResource("ShaderMaterial_nicf8")
-material_overlay = SubResource("ShaderMaterial_2adw5")
+[node name="Death" type="Node" parent="StateMachine"]
+script = ExtResource("10_AIDeathState")
+
+[node name="Hurt" type="Node" parent="StateMachine"]
+script = ExtResource("11_AIHurtState")
+
+[node name="HitboxComponent" type="Area3D" parent="."]
+script = ExtResource("9_HitboxComponent")
+damage = 15.0
+poise_damage = 25.0
+team_id = 1
+monitoring = false
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="HitboxComponent"]
+shape = SubResource("CapsuleShape3D_enemy")
 
 [node name="PoiseComponent" type="Node" parent="."]
 script = ExtResource("7_4kric")
@@ -81,3 +97,8 @@ script = ExtResource("1_641yr")
 
 [node name="CollisionShape3D" type="CollisionShape3D" parent="DetectionComponent"]
 shape = SubResource("CapsuleShape3D_nsqss")
+
+[node name="LootComponent" type="Node" parent="."]
+script = ExtResource("12_LootComponent")
+loot_table = [ExtResource("13_potion"), ExtResource("14_firebomb")]
+drop_chance = 1.0

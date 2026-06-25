@@ -1,0 +1,20 @@
+Enemy Scene Node Transforms:
+- mannyquin [Node3D] position: (0.0, 0.0, 0.0) rotation: (0.0, 0.0, 0.0)
+- CollisionShape3D [CollisionShape3D] position: (0.0, 0.799, 0.0) rotation: (0.0, 0.0, 0.0)
+- AnimationTree [AnimationTree]
+- NavigationAgent3D [NavigationAgent3D]
+- CombatTimer [Timer]
+- ChaseTimer [Timer]
+- EquipmentSystem#WeaponHitTarget [AudioStreamPlayer3D] position: (0.0, 0.0, 0.0) rotation: (0.0, 0.0, 0.0)
+- EquipmentSystem#WeaponHitWorld [AudioStreamPlayer3D] position: (0.0, 0.0, 0.0) rotation: (0.0, 0.0, 0.0)
+- EquipmentSystem#BoneAttachment3D [BoneAttachment3D] position: (-0.36346, 0.865393, -0.022841) rotation: (0.376039, 1.178048, -2.631286)
+- EquipmentSystem_BoneAttachment3D#HandPivot [Marker3D] position: (-0.0, 0.095148, 0.02714) rotation: (1.570796, 1.570796, 0.0)
+- HealthSystem [Node]
+- DieSound [AudioStreamPlayer3D] position: (0.0, 0.0, 0.0) rotation: (0.0, 0.0, 0.0)
+- HurtSound [AudioStreamPlayer3D] position: (0.0, 0.0, 0.0) rotation: (0.0, 0.0, 0.0)
+- FootstepSoundSystem#FootfallLeft [BoneAttachment3D] position: (0.296483, 0.102688, 0.187295) rotation: (-1.550974, -2.627506, -0.448019)
+- FootstepSoundSystem_FootfallLeft#Pivot [Marker3D] position: (0.0, 0.0, 0.0) rotation: (1.570796, 0.0, 0.0)
+- FootstepSoundSystem_FootfallLeft_Pivot#Floorcast [RayCast3D] position: (0.0, 0.0, 0.0) rotation: (0.0, 0.0, 0.0)
+- FootstepSoundSystem#FootfallRight [BoneAttachment3D] position: (-0.217287, 0.108521, -0.200099) rotation: (-1.560312, 0.896694, 2.005026)
+- FootstepSoundSystem_FootfallRight#Pivot [Marker3D] position: (0.0, 0.0, 0.0) rotation: (1.570796, 0.0, 0.0)
+- FootstepSoundSystem_FootfallRight_Pivot#Floorcast [RayCast3D] position: (0.0, 0.0, 0.0) rotation: (0.0, 0.0, 0.0)

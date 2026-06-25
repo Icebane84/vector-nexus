@@ -16,5 +16,11 @@ func _ready() -> void:
 func _on_interacted(_player: Player) -> void:
 	if item_data:
 		GameEvents.instance.item_collected.emit(item_data)
+		
+		# Play collection sound
+		var collect_sfx = load("res://audio/SoundFX/click/click_1.wav") as AudioStream
+		if collect_sfx:
+			GameEvents.instance.spatial_sound_requested.emit(collect_sfx, global_position, 0.0, 0.1)
+			
 		print("PHOENIX_LOG: Collected item: ", item_data.display_name)
 	queue_free()

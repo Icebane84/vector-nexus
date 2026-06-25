@@ -1,6 +1,8 @@
-[gd_scene format=3 uid="uid://baj31371p51ir"]
+[gd_scene load_steps=8 format=3 uid="uid://baj31371p51ir"]
 
-[ext_resource type="PackedScene" uid="uid://bvripcf01ii3v" path="res://scenes/entities/Kaelen.tscn" id="1_kaelen"]
+[ext_resource type="PackedScene" path="res://scenes/entities/Kaelen.tscn" id="1_kaelen"]
+[ext_resource type="PackedScene" uid="uid://erbxbm2tqrpp" path="res://scenes/entities/EnemyBase.tscn" id="2_enemy"]
+[ext_resource type="Script" path="res://enemy/patrol_point.gd" id="3_patrol_point"]
 
 [sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_sky"]
 sky_horizon_color = Color(0.64625, 0.65575, 0.67075, 1)
@@ -19,6 +21,13 @@ size = Vector2(50, 50)
 
 [sub_resource type="BoxShape3D" id="BoxShape3D_floor"]
 size = Vector3(50, 0.1, 50)
+
+[sub_resource type="Curve3D" id="Curve3D_patrol"]
+_data = {
+"points": PackedVector3Array(0, 0, 0, 0, 0, 0, -5, 0, -5, 0, 0, 0, 0, 0, 0, 5, 0, -5, 0, 0, 0, 0, 0, 0, 5, 0, 5, 0, 0, 0, 0, 0, 0, -5, 0, 5, 0, 0, 0, 0, 0, 0, -5, 0, -5),
+"tilts": PackedFloat32Array(0, 0, 0, 0, 0)
+}
+point_count = 5
 
 [node name="TestArena" type="Node3D" unique_id=1861179714]
 
@@ -39,3 +48,14 @@ shape = SubResource("BoxShape3D_floor")
 
 [node name="Kaelen" parent="." unique_id=229320982 instance=ExtResource("1_kaelen")]
 transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+
+[node name="PatrolPath" type="Path3D" parent="."]
+curve = SubResource("Curve3D_patrol")
+
+[node name="PatrolPoint" type="PathFollow3D" parent="PatrolPath"]
+script = ExtResource("3_patrol_point")
+patrol_speed = 2.0
+
+[node name="EnemyBase" parent="." instance=ExtResource("2_enemy")]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1.5, -5)
+patrol_target_path = NodePath("../PatrolPath/PatrolPoint")

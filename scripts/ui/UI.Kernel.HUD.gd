@@ -19,6 +19,9 @@ func _ready() -> void:
 	
 	GameEvents.instance.lock_on_target_changed.connect(_on_lock_on_target_changed)
 	GameEvents.instance.combat_state_changed.connect(_on_combat_state_changed)
+	GameEvents.instance.player_active_item_changed.connect(_on_active_item_changed)
+	GameEvents.instance.interaction_hint_shown.connect(_on_interaction_hint_shown)
+	GameEvents.instance.interaction_hint_hidden.connect(_on_interaction_hint_hidden)
 
 func _process(_delta: float) -> void:
 	if not _locked_target or not is_instance_valid(_locked_target):
@@ -76,3 +79,26 @@ func _on_combat_state_changed(actor: Node3D, new_state: T.CombatState) -> void:
 	var indicator: Control = get_node_or_null("%CombatIndicator") as Control
 	if indicator:
 		indicator.visible = not _active_combatants.is_empty()
+
+func _on_active_item_changed(item: ItemData) -> void:
+	var tex_rect = %ItemTexture as TextureRect
+	var count_label = %ItemCount as Label
+	if not tex_rect or not count_label: return
+	
+	if item and item.count > 0:
+		tex_rect.texture = item.icon
+		count_label.text = str(item.count)
+		%ActiveItemSlot.show()
+	else:
+		tex_rect.texture = null
+		count_label.text = "0"
+		%ActiveItemSlot.hide()
+
+func _on_interaction_hint_shown(text: String) -> void:
+	if has_node("%InteractionPrompt") and has_node("%PromptLabel"):
+		%PromptLabel.text = text
+		%InteractionPrompt.show()
+
+func _on_interaction_hint_hidden() -> void:
+	if has_node("%InteractionPrompt"):
+		%InteractionPrompt.hide()

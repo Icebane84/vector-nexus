@@ -49,6 +49,10 @@ func _update_ray_length() -> void:
 	target_position = Vector3.FORWARD * interaction_distance
 
 func _find_interactable(node: Node) -> Node:
+	if not node:
+		return null
+	if node.has_method(&"interact"):
+		return node
 	# Look for the component in children to avoid tight coupling with node names
 	for child in node.get_children():
 		if child.has_method(&"interact"):
@@ -57,9 +61,7 @@ func _find_interactable(node: Node) -> Node:
 
 func _handle_ui_hint(text: String) -> void:
 	# Use Global Synapse (SKILL-004) to notify HUD
-	# GameEvents.interaction_hint_shown.emit(text)
-	pass
+	GameEvents.instance.interaction_hint_shown.emit(text)
 	
 func _hide_ui_hint() -> void:
-	# GameEvents.interaction_hint_hidden.emit()
-	pass
+	GameEvents.instance.interaction_hint_hidden.emit()

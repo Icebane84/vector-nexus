@@ -32,8 +32,8 @@ func _is_valid_transition(next_state_name: String) -> bool:
 
 	
 	
-@signal is_ready
+signal is_ready
 
 # Example: A signal emitted when the character performs a specific action.
-@signal action_completed(action_type: String, result: Dictionary) 	
+signal action_completed(action_type: String, result: Dictionary)
 

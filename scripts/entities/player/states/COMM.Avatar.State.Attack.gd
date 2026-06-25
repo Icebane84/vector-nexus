@@ -34,12 +34,29 @@ var _buffered_input: bool = false
 var _is_procedural_slashing: bool = false
 var _combo_index: int = 0
 
+var _swish_sounds: Array[AudioStream] = []
+
+func _get_swish_sound() -> AudioStream:
+	if _swish_sounds.is_empty():
+		for i in range(1, 7):
+			var path = "res://audio/SoundFX/swish/swish_%d.wav" % i
+			var stream = load(path) as AudioStream
+			if stream:
+				_swish_sounds.append(stream)
+	if _swish_sounds.is_empty():
+		return null
+	return _swish_sounds[randi() % _swish_sounds.size()]
+
 func enter(_msg: Dictionary = {}) -> void:
 	super.enter(_msg)
 	_combo_index = _msg.get("combo_index", 0)
 	_reset_state()
 
 	if not _handle_stamina(): return
+
+	var swish = _get_swish_sound()
+	if swish and actor:
+		GameEvents.instance.spatial_sound_requested.emit(swish, actor.global_position, 0.0, 0.1)
 
 	if Input.is_action_just_pressed(&"shadow_attack"):
 		if actor.has_method(&"execute_shadow_attack"):

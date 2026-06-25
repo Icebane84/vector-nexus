@@ -15,6 +15,10 @@ signal interacted(player: Player)
 
 var _was_used: bool = false
 
+func _ready() -> void:
+	collision_layer = 32
+	collision_mask = 0
+
 func interact(player: Player) -> void:
 	if is_one_shot and _was_used: return
 	_was_used = true

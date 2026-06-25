@@ -38,6 +38,17 @@
 
 ---
 
+## 🎯 PHASE 3 SUBSYSTEMS (SOUL — Enhancement Conversion)
+
+| Artifact                              | URI                                                          | State       | Integrity   |
+| :------------------------------------ | :----------------------------------------------------------- | :---------- | :---------- |
+| **Targeting Eye (Volumetric)**        | [[scripts/components/COMP.Targeting.Eye.gd]]                 | [CANONIZED] | [SKILL-005] |
+| **LockOn Component (v2)**            | [[scripts/components/COMP.Camera.LockOn.gd]]                 | [CANONIZED] | [SKILL-001] |
+| **Footfall Sensor**                  | [[scripts/components/COMP.Locomotion.FootfallSensor.gd]]     | [CANONIZED] | [SKILL-006] |
+| **Footstep Audio**                   | [[scripts/components/COMP.Locomotion.FootstepAudio.gd]]      | [CANONIZED] | [SKILL-004] |
+
+---
+
 ## 🛡️ ENTROPY MANAGEMENT
 
 | Zone              | Strategy                 | Status    |

@@ -17,7 +17,10 @@
 - Implemented **Plug-and-Play Combat Animation Loader**: Refactored `COMM.Avatar.Player.gd` to proactively check, load, and register `res://assets/Models/ModelAnimations/attack.res` as `"attack"` under the default library if it exists.
 - Implemented **Procedural Spin-Slash Fallback**: Refactored `COMM.Avatar.State.Attack.gd` to invoke a highly kinetic procedural attack fallback (360-degree visuals spin via custom Ease-Out Tween, forward lunge velocity tween, and synchronized hitbox activation) if a skeletal attack animation is missing, preventing any character T-posing during melee attacks.
 - Resolved **Strict Static Typing Setter Warnings (SKILL-015)**: Added explicit parameter types to property setters (`set(v: float)`) in `COMM.Avatar.State.Attack.gd`, eliminating multiple critical linter warnings.
+- **Procedural Animation Fallbacks**: Programmed `ExtractDemoAnims.gd` to automatically map missing tree animations (`LandSoft` and `ItemUseFail`) to high-quality fallbacks (`LandHard` and `UsePotion` respectively), ensuring 100% resolution of Kaelen's animation tree configuration.
+- **StateMachine Hierarchy Stabilization**: Registered the missing `Fall` and `Jump` scripts/nodes inside `scenes/entities/Kaelen.tscn`, resolving a critical runtime crash where Kaelen falling in the air would fail to transition to the `Fall` state.
+- **Full Verification Suite Alignment**: Confirmed 100% script compilation (102 scripts loaded successfully) and zero scene instantiation or locomotion stress test errors.
 
 ## Next Steps
 
-- Proceed with game testing and additional character mechanics.
+- Proceed with game testing, combat system polish, and additional character mechanics.

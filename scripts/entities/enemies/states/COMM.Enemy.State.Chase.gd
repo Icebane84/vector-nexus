@@ -48,7 +48,7 @@ func physics_update(_delta: float) -> void:
 	_execute_movement(target.global_position)
 
 func _find_new_target() -> void:
-	var players: Array[Node] = get_tree().get_nodes_in_group("Player")
+	var players: Array[Node] = get_tree().get_nodes_in_group("player")
 
 	if players.size() > 0:
 		actor.target = players[0]

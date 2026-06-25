@@ -28,7 +28,7 @@ static func audit_sovereign_scene(m: Node) -> void:
 
 static func audit_generic(n: Node) -> void:
 	for child in n.get_children():
-		if child is CharacterBody3D: audit_player(child)
+		if child is CharacterBody3D and child.is_in_group("player"): audit_player(child)
 		audit_generic(child)
 
 static func _check_component(parent: Node, component: String) -> void:

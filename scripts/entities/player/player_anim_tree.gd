@@ -40,6 +40,9 @@ func _ready():
 		return
 	_initialized = true
 	
+	# PHOENIX-GVRN: Ensure advanced expressions evaluate in our own script scope
+	advance_expression_base_node = get_path()
+	
 	if not attack_timer.get_parent():
 		add_child(attack_timer)
 	attack_timer.one_shot = true
@@ -48,9 +51,8 @@ func _ready():
 	if !player_node:
 		push_warning(str(self) + ": Player node must be set")
 		
-	var player_anim_player = get_node(anim_player)
-	if player_anim_player and not player_anim_player.animation_started.is_connected(_on_animation_started):
-		player_anim_player.animation_started.connect(_on_animation_started)
+	if not animation_started.is_connected(_on_animation_started):
+		animation_started.connect(_on_animation_started)
 		
 	player_node.dodge_started.connect(_on_dodge_started)
 	player_node.jump_started.connect(_on_jump_started)
@@ -83,17 +85,16 @@ func _ready():
 	_on_gadget_change_ended(player_node.gadget_type)
 	_on_item_change_ended(player_node.current_item)
 	
-func _process(_delta):
-	
+func _process(delta: float) -> void:
 	if player_node.strafing:
-		set_strafe()
+		set_strafe(delta)
 	else:
-		set_free_move()
+		set_free_move(delta)
 		
 	if player_node.current_state == player_node.state.CLIMB:
 		set_ladder()
 		
-	set_guarding()
+	set_guarding(delta)
 
 
 func request_oneshot(oneshot:String):
@@ -104,12 +105,12 @@ func _on_landed_fall(_hard_or_soft = "HARD"):
 	landing_type = _hard_or_soft
 	request_oneshot("Landed")
 
-func set_guarding():
+func set_guarding(delta: float) -> void:
 	if player_node.guarding && !player_node.busy:
 		guard_value = 1
 	else:
 		guard_value = 0
-	var new_blend = lerp(get("parameters/Guarding/blend_amount"),guard_value,.2)
+	var new_blend = lerp(get("parameters/Guarding/blend_amount"), guard_value, 1.0 - exp(-12.0 * delta))
 	set("parameters/Guarding/blend_amount", new_blend)
 
 func _on_parry_started():
@@ -210,7 +211,7 @@ func set_ladder():
 	print(player_node.input_dir.y)
 	set("parameters/MovementStates/LADDER_tree/LadderTime/scale",-player_node.input_dir.y)
 			
-func set_strafe():
+func set_strafe(delta: float) -> void:
 	# Strafe left and right animations run by the player's velocity cross product
 	# Forward and back are acording to input, since direction changes by fixed camera orientation
 	var new_blend = Vector2(player_node.strafe_cross_product,player_node.move_dot_product)
@@ -221,23 +222,26 @@ func set_strafe():
 		# apply input as a magnatude for more natural run versus walk animation blending
 		new_blend *= Vector2(abs(player_node.input_dir.x),abs(player_node.input_dir.y)) 
 	lerp_movement = get("parameters/MovementStates/" + weapon_type + "_tree/MoveStrafe/blend_position")
-	lerp_movement = lerp(lerp_movement,new_blend,.2)
+	lerp_movement = lerp(lerp_movement, new_blend, 1.0 - exp(-12.0 * delta))
 	set("parameters/MovementStates/" + weapon_type + "_tree/MoveStrafe/blend_position", lerp_movement)
 
-func set_free_move():
+func set_free_move(delta: float) -> void:
 	# Non-strafing "free" movement, is just the forward input direction.
 	var new_blend = Vector2(0,abs(player_node.input_dir.x) + abs(player_node.input_dir.y))
 	if player_node.slowed:
 		new_blend *= .4 # force a walk speed
 	lerp_movement = get("parameters/MovementStates/" + weapon_type + "_tree/MoveStrafe/blend_position")
-	lerp_movement = lerp(lerp_movement,new_blend,.2)
+	lerp_movement = lerp(lerp_movement, new_blend, 1.0 - exp(-12.0 * delta))
 	set("parameters/MovementStates/" + weapon_type + "_tree/MoveStrafe/blend_position",lerp_movement)
 
 
-func _on_animation_started(anim_name):
-	anim_length = get_node(anim_player).get_animation(anim_name).length
-	#print("animation name: " + str(anim_name))
-	animation_measured.emit(anim_length)
+func _on_animation_started(anim_name: StringName) -> void:
+	var player_node_ref = get_node_or_null(anim_player)
+	if player_node_ref and player_node_ref.has_animation(anim_name):
+		var anim_res = player_node_ref.get_animation(anim_name)
+		if anim_res:
+			anim_length = anim_res.length
+			animation_measured.emit(anim_length)
 
 func _on_attack_timer_timeout():
 	attack_count = 1

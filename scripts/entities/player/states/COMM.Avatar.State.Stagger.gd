@@ -14,9 +14,27 @@ var _duration: float = 0.6
 		_duration = v
 var _timer: float = 0.0
 
+var _voice_sounds: Array[AudioStream] = []
+
+func _get_voice_sound() -> AudioStream:
+	if _voice_sounds.is_empty():
+		for i in range(1, 6):
+			var path = "res://audio/SoundFX/voice/voice_hurt_0%d.wav" % i
+			var stream = load(path) as AudioStream
+			if stream:
+				_voice_sounds.append(stream)
+	if _voice_sounds.is_empty():
+		return null
+	return _voice_sounds[randi() % _voice_sounds.size()]
+
 func enter(_msg: Dictionary = {}) -> void:
 	super.enter(_msg)
 	_timer = duration
+	
+	var voice = _get_voice_sound()
+	if voice and actor:
+		GameEvents.instance.spatial_sound_requested.emit(voice, actor.global_position, 0.0, 0.1)
+
 	if animation_tree and animation_tree.active:
 		if actor and actor.has_signal(&"hurt_started"):
 			actor.hurt_started.emit()

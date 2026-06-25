@@ -327,3 +327,43 @@ signal died # Actual Godot implementation
 ```
 
 ---
+
+## SKILL-023: Headless Verification & Dynamic Animation Cache Management
+
+### 1. Dynamic Animation Cache Rebuilding (Godot 4)
+- **What:** When programmatically modifying or adding animations to an `AnimationLibrary` already registered on an `AnimationPlayer`, Godot 4 does not automatically refresh the playback cache, causing `has_animation()` checks to fail or animations to skip.
+- **How:** Explicitly remove and re-add the target library to force an internal cache rebuild.
+```gdscript
+# Force cache rebuild
+anim.remove_animation_library(&"")
+anim.add_animation_library(&"", default_lib)
+```
+
+### 2. Deferring Headless Node Verification
+- **What:** Nodes instantiated inside headless scripts (e.g. unit tests inheriting from `SceneTree`) do not execute `_ready()` scripts synchronously during `add_child()`. Accessing properties or nodes setup in `_ready()` immediately after `add_child()` results in errors.
+- **How:** Run tests using `call_deferred()` and wait for a process frame:
+```gdscript
+extends SceneTree
+
+func _init() -> void:
+	call_deferred("_run_test")
+
+func _run_test() -> void:
+	var enemy = scene.instantiate()
+	root.add_child(enemy)
+	await process_frame # Allow _ready() to complete
+	# Run assertions here
+```
+
+### 3. CI-Safe Resource Formats
+- **What:** In headless/CI environments, the parser can fail to load `.tres` resource files with `script_class="ClassName"` if the class name database has not been rebuilt.
+- **How:** Omit `script_class` from the header of custom `.tres` files (rely purely on the `script = ExtResource(...)` path declaration).
+```ini
+# Bad (causes headless parsing errors)
+[gd_resource type="Resource" script_class="ConsumableItem" load_steps=4 format=3]
+
+# Good (resilient to cache misses)
+[gd_resource type="Resource" load_steps=4 format=3]
+```
+
+---

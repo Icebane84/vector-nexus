@@ -26,5 +26,33 @@ func spawn_loot() -> void:
 		_drop_physical_item(item)
 
 func _drop_physical_item(data: ItemData) -> void:
-	# In a full game, you'd spawn a "Pickup" scene here
-	print("Phoenix Loot: Dropped ", data.display_name)
+	var loot_drop_scene = load("res://scenes/ui/LootDrop.tscn")
+	if not loot_drop_scene:
+		print("PHOENIX_LOG: ERROR - LootDrop.tscn not found.")
+		return
+	var inst = loot_drop_scene.instantiate() as RigidBody3D
+	if inst:
+		inst.item_data = data
+		var parent = get_parent()
+		if parent is Node3D:
+			inst.global_position = parent.global_position + Vector3.UP * 0.5
+			if parent.get_parent():
+				parent.get_parent().add_child(inst)
+			else:
+				get_tree().current_scene.add_child(inst)
+			
+			# Apply physical pop-out impulse (upward and outward random force)
+			var force_direction = Vector3(
+				randf_range(-1.5, 1.5),
+				randf_range(4.0, 6.0),
+				randf_range(-1.5, 1.5)
+			)
+			inst.apply_central_impulse(force_direction)
+			
+			# Play spawn audio
+			var spawn_sfx = load("res://audio/SoundFX/special/Spawn01.wav") as AudioStream
+			if spawn_sfx:
+				GameEvents.instance.spatial_sound_requested.emit(spawn_sfx, inst.global_position, 0.0, 0.1)
+		else:
+			get_tree().current_scene.add_child(inst)
+		print("PHOENIX_LOG: Spawned physical loot drop: ", data.display_name)

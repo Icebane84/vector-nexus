@@ -46,3 +46,12 @@ func physics_update(_delta: float) -> void:
 	if Input.is_action_just_pressed(&"parry"):
 		state_machine.transition_to(&"Parry")
 		return
+
+	if Input.is_action_just_pressed(&"use_item"):
+		state_machine.transition_to(&"UseItem")
+		return
+
+	if Input.is_action_just_pressed(&"transform"):
+		var to_ugs: bool = actor.weapon_type != "UGS"
+		state_machine.transition_to(&"Transform", {"to_ugs": to_ugs})
+		return

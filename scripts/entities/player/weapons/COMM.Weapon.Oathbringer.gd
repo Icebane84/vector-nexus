@@ -30,6 +30,8 @@ var corruption_state: float:
 
 var _emission_light: OmniLight3D
 var sword_mesh: MeshInstance3D
+var longsword_mesh: MeshInstance3D
+var ugs_mesh: MeshInstance3D
 
 # ------------------------------------------------------------------------------
 # INITIALIZATION
@@ -43,22 +45,23 @@ func _ready() -> void:
 	_emission_light.light_color = COLOR_PURE
 	_emission_light.omni_range = 3.0
 
-	# Load and attach the Sword mesh model
-	var weapons_scene := load("res://assets/Models/templateweapons.glb") as PackedScene
-	if weapons_scene:
-		var weapons_inst := weapons_scene.instantiate() as Node3D
-		if weapons_inst:
-			var sword_node = weapons_inst.find_child("Sword", true, false)
-			if sword_node and sword_node is MeshInstance3D:
-				sword_mesh = MeshInstance3D.new()
-				sword_mesh.name = &"SwordMesh"
-				sword_mesh.mesh = sword_node.mesh
-				# Align orientation for grip
-				sword_mesh.transform = Transform3D(
-					Basis(Vector3.UP, PI / 2.0) * Basis(Vector3.RIGHT, PI / 2.0),
-					Vector3(-0.1, 0.2, 0.0)
-				)
-				add_child(sword_mesh)
+	# Only load template weapons scene if longsword_mesh is not pre-assigned
+	if not longsword_mesh:
+		var weapons_scene := load("res://assets/Models/templateweapons.glb") as PackedScene
+		if weapons_scene:
+			var weapons_inst := weapons_scene.instantiate() as Node3D
+			if weapons_inst:
+				var sword_node = weapons_inst.find_child("Sword", true, false)
+				if sword_node and sword_node is MeshInstance3D:
+					sword_mesh = MeshInstance3D.new()
+					sword_mesh.name = &"SwordMesh"
+					sword_mesh.mesh = sword_node.mesh
+					# Align orientation for grip
+					sword_mesh.transform = Transform3D(
+						Basis(Vector3.UP, PI / 2.0) * Basis(Vector3.RIGHT, PI / 2.0),
+						Vector3(-0.1, 0.2, 0.0)
+					)
+					add_child(sword_mesh)
 
 # ------------------------------------------------------------------------------
 # CORE LOGIC (The Judgment)
@@ -116,6 +119,12 @@ func _process(delta: float) -> void:
 	_emission_light.light_energy = 1.0 + (pulse * 1.5)
 
 	# Dynamic Weapon Scaling based on corruption (morphing longsword to greatsword)
+	if longsword_mesh:
+		var target_scale := Vector3.ONE.lerp(Vector3(1.4, 1.7, 1.4), corruption_state)
+		longsword_mesh.scale = target_scale
+	if ugs_mesh:
+		var target_scale := Vector3.ONE.lerp(Vector3(1.4, 1.7, 1.4), corruption_state)
+		ugs_mesh.scale = target_scale * 1.8 # Base UGS scale is 1.8x
 	if sword_mesh:
 		var target_scale := Vector3.ONE.lerp(Vector3(1.4, 1.7, 1.4), corruption_state)
 		sword_mesh.scale = target_scale

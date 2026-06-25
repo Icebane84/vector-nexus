@@ -22,6 +22,7 @@ const HitboxComponentScript = preload("res://scripts/components/COMP.Physics.Hit
 const PoiseComponentScript = preload("res://scripts/components/COMP.Stats.Poise.gd")
 const SanityComponentScript = preload("res://scripts/components/COMP.Stats.Sanity.gd")
 const ManifestationSystemScript = preload("res://scripts/systems/manifestation_system.gd")
+const ConsumableItemScript = preload("res://scripts/resources/items/DATA.Inventory.ConsumableItem.gd")
 
 # Input queuing system for input delay manifestation
 class DelayedInput:
@@ -88,11 +89,12 @@ signal block_started
 @warning_ignore("unused_signal")
 signal death_started
 
-enum SoulsState { FREE, STATIC, CLIMB }
+enum SoulsState { FREE, STATIC, CLIMB, TRANSFORMING }
 var state: Dictionary = {
 	"FREE": SoulsState.FREE,
 	"STATIC": SoulsState.STATIC,
-	"CLIMB": SoulsState.CLIMB
+	"CLIMB": SoulsState.CLIMB,
+	"TRANSFORMING": SoulsState.TRANSFORMING
 }
 var current_state: SoulsState = SoulsState.FREE
 var strafing: bool = false
@@ -117,6 +119,10 @@ var input_dir: Vector2 = Vector2.ZERO
 @export_group("Morality (The Kaelen Standard)")
 @export_range(0.0, 1.0) var moral_alignment: float = 0.0
 
+@export_group("Weapons")
+@export var oathbringer_longsword: Node3D
+@export var oathbringer_ugs: Node3D
+
 @export_group("Dependencies")
 @export var state_machine: StateMachineScript # The StateMachine node
 @export var camera: PlayerCameraScript
@@ -129,6 +135,9 @@ var input_dir: Vector2 = Vector2.ZERO
 @export var hitbox_component: HitboxComponentScript
 @export var poise_component: PoiseComponentScript
 @export var sanity_component: SanityComponentScript
+
+var inventory_component: InventoryComponent = null
+var active_item_index: int = 0
 
 func _ready() -> void:
 	assert(state_machine != null, "Player: state_machine is unassigned!")
@@ -160,6 +169,36 @@ func _ready() -> void:
 	_weave_dependencies()
 	_setup_corruption_shader()
 	_setup_weapon()
+
+	# Initialize Inventory Component
+	inventory_component = InventoryComponent.new()
+	inventory_component.name = &"InventoryComponent"
+	add_child(inventory_component)
+	inventory_component.inventory_updated.connect(
+		func():
+			if current_item == null:
+				cycle_active_item()
+	)
+
+	# Load and add starting items
+	var potion_res = load("res://resources/items/potion.tres") as ConsumableItemScript
+	var firebomb_res = load("res://resources/items/firebomb.tres") as ConsumableItemScript
+	if potion_res:
+		inventory_component.add_item(potion_res.duplicate() as ConsumableItemScript)
+	if firebomb_res:
+		inventory_component.add_item(firebomb_res.duplicate() as ConsumableItemScript)
+
+	# Initialize active item
+	cycle_active_item()
+
+	# Initialize Interactions Component
+	var interactions_script = load("res://scripts/components/sensors/COMP.AI.Interaction.gd") as Script
+	if interactions_script:
+		var interactions_node = RayCast3D.new()
+		interactions_node.set_script(interactions_script)
+		interactions_node.name = &"InteractionsComponent"
+		interactions_node.set(&"player", self)
+		add_child(interactions_node)
 
 	# Notify Global Synapse of instantiation
 	GameEvents.instance.player_instantiated.emit(self)
@@ -236,6 +275,9 @@ func _on_posture_broken() -> void:
 		state_machine.transition_to(&"Stagger")
 
 func _physics_process(delta: float) -> void:
+	if Input.is_action_just_pressed(&"change_item"):
+		cycle_active_item()
+
 	# DEBUG: Morality Manipulation (The Kaelen Standard debug keys)
 	if Input.is_key_pressed(KEY_T):
 		update_alignment(-0.5 * delta) # Redeem over time
@@ -294,6 +336,11 @@ func _physics_process(delta: float) -> void:
 	# Update guarding status based on whether parry input is held down
 	guarding = Input.is_action_pressed(&"parry")
 
+	# Smoothly return lean to 0 when not actively moving/turning
+	if current_state != SoulsState.FREE or (state_machine and state_machine.current_state and state_machine.current_state.name != &"Move"):
+		if visuals:
+			visuals.rotation.z = lerp(visuals.rotation.z, 0.0, 1.0 - exp(-10.0 * delta))
+
 	# PHOENIX-GVRN: Central Gravity Management (SKILL-006)
 	if not is_on_floor():
 		velocity.y -= ProjectSettings.get_setting("physics/3d/default_gravity") * delta
@@ -331,22 +378,29 @@ func _setup_weapon() -> void:
 	if not skeleton:
 		return
 		
-	# Create BoneAttachment3D (SKILL-014 dependency injection)
-	weapon_attachment = BoneAttachment3D.new()
-	weapon_attachment.name = &"WeaponAttachment"
-	weapon_attachment.bone_name = &"DEF-hand.R"
-	skeleton.add_child(weapon_attachment)
+	# Find or create RightHandAttachment (SKILL-014 dependency injection)
+	weapon_attachment = skeleton.find_child("RightHandAttachment", true, false)
+	if not weapon_attachment:
+		weapon_attachment = BoneAttachment3D.new()
+		weapon_attachment.name = &"RightHandAttachment"
+		weapon_attachment.bone_name = &"RightHand"
+		skeleton.add_child(weapon_attachment)
 	
-	# Instantiate Kaelen's Oathbringer sentient weapon (SKILL-022)
+	# Instantiate Kaelen's Oathbringer sentient weapon logic (SKILL-022)
 	weapon_mesh = Oathbringer.new()
 	weapon_mesh.name = &"Oathbringer"
+	if oathbringer_longsword:
+		weapon_mesh.set(&"longsword_mesh", oathbringer_longsword)
+	if oathbringer_ugs:
+		weapon_mesh.set(&"ugs_mesh", oathbringer_ugs)
 	weapon_attachment.add_child(weapon_mesh)
 	
-	# Wait for child ready initialization, then apply corruption shader override
-	if corruption_material and weapon_mesh.get("sword_mesh") != null:
-		var s_mesh = weapon_mesh.get("sword_mesh") as MeshInstance3D
-		if s_mesh:
-			s_mesh.material_override = corruption_material
+	# Apply corruption shader override to active weapon meshes
+	if corruption_material:
+		if oathbringer_longsword:
+			oathbringer_longsword.material_override = corruption_material
+		if oathbringer_ugs:
+			oathbringer_ugs.material_override = corruption_material
 
 func _find_skeleton(node: Node) -> Skeleton3D:
 	if node is Skeleton3D:
@@ -381,6 +435,21 @@ func execute_shadow_attack() -> void:
 	# 3. Hit-Stop for "Weight"
 	GameEvents.instance.impact_occurred.emit(global_position, 20.0, 50.0)
 
+func swap_weapon_meshes(to_ugs: bool) -> void:
+	if to_ugs:
+		weapon_type = "UGS"
+		if oathbringer_longsword:
+			oathbringer_longsword.visible = false
+		if oathbringer_ugs:
+			oathbringer_ugs.visible = true
+	else:
+		weapon_type = "SLASH"
+		if oathbringer_longsword:
+			oathbringer_longsword.visible = true
+		if oathbringer_ugs:
+			oathbringer_ugs.visible = false
+	weapon_change_ended.emit(weapon_type)
+
 func _on_death() -> void:
 	death_started.emit()
 	set_physics_process(false)
@@ -390,3 +459,24 @@ func update_alignment(action_weight: float) -> void:
 	# Direct sync to sanity_component to drive all other instability logic seamlessly
 	if sanity_component:
 		sanity_component.current_sanity = (1.0 - moral_alignment) * sanity_component.max_sanity
+
+func cycle_active_item() -> void:
+	if not inventory_component or inventory_component.items.is_empty():
+		current_item = null
+		GameEvents.instance.player_active_item_changed.emit(null)
+		return
+
+	# Find only consumable items
+	var consumables: Array[Resource] = []
+	for item in inventory_component.items:
+		if item is ConsumableItemScript:
+			consumables.append(item as ConsumableItemScript)
+
+	if consumables.is_empty():
+		current_item = null
+		GameEvents.instance.player_active_item_changed.emit(null)
+		return
+
+	active_item_index = (active_item_index + 1) % consumables.size()
+	current_item = consumables[active_item_index]
+	GameEvents.instance.player_active_item_changed.emit(current_item)

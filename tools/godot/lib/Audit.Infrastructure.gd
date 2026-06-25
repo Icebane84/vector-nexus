@@ -6,7 +6,7 @@ extends RefCounted
 
 static func check_autoloads() -> void:
 	print("PHOENIX_LOG: Auditing Autoloads...")
-	var required: Array[String] = ["_Director", "_GameEvents", "Log"]
+	var required: Array[String] = ["_Director", "_GameEvents", "_Log"]
 	for a: String in required:
 		if not ProjectSettings.has_setting("autoload/" + a):
 			print("  [!] MISSING AUTOLOAD: ", a)
