@@ -1,29 +1,31 @@
-\# RESONANCE BARREL: COMPONENTS\n\n## Active Artifacts
+# RESONANCE BARREL: COMPONENTS
 
-| Artifact ID                           | Description                                                                          | Source                                                                           |
-| :------------------------------------ | :----------------------------------------------------------------------------------- | :------------------------------------------------------------------------------- |
-| `COMP.AI.Detection`    | Standard awareness module for AI agents.                                  | [COMP.AI.Detection.gd](./sensors/COMP.AI.Detection.gd) |
-| `COMP.AI.Interaction`  | Standard raycast logic for player interaction with objects.               | [COMP.AI.Interaction.gd](./sensors/COMP.AI.Interaction.gd) |
-| `COMP.AI.Navigation`   | Standard pathfinding interface using NavigationAgent3D.                   | [COMP.AI.Navigation.gd](./COMP.AI.Navigation.gd)     |
-| `COMP.Camera.LockOn`   | Rotational binding logic for third-person camera targeting.               | [COMP.Camera.LockOn.gd](./COMP.Camera.LockOn.gd)     |
-| `COMP.Inventory.Main`  | Standard item container and management hub.                               | [COMP.Inventory.Main.gd](./COMP.Inventory.Main.gd)   |
-| `COMP.Physics.Health`  | Core health management and invincibility handling.                        | [COMP.Physics.Health.gd](./COMP.Physics.Health.gd)   |
-| `COMP.Physics.Hitbox`  | Standardized damage application proxy for Area3Ds.                        | [COMP.Physics.Hitbox.gd](./COMP.Physics.Hitbox.gd)   |
-| `COMP.Physics.Hurtbox` | Centralized damage reception logic for living entities.                   | [COMP.Physics.Hurtbox.gd](./COMP.Physics.Hurtbox.gd) |
-| `COMP.State.Dodge`     | Handles directional dodge rolling with state-locking and duration limits. | [COMP.State.Dodge.gd](./COMP.State.Dodge.gd)         |
-| `COMP.State.Jump`      | Modular state for handling entity jumping. Strictly decoupled from input. | [COMP.State.Jump.gd](./COMP.State.Jump.gd)           |
-| `COMP.Stats.Attribute` | Handles base stats and derives combat modifiers.                          | [COMP.Stats.Attribute.gd](./COMP.Stats.Attribute.gd) |
-| `COMP.Stats.Main`      | Centralized statistics hub handling level, XP, and attribute bonuses.     | [COMP.Stats.Main.gd](./COMP.Stats.Main.gd)           |
-| `COMP.Stats.Poise`     | Manages stability and stagger thresholds.                                 | [COMP.Stats.Poise.gd](./COMP.Stats.Poise.gd)         |
-| `COMP.Stats.Sanity`    | Atomized psychological health tracker. Manages Sanity, Shadow Resonance,  | [COMP.Stats.Sanity.gd](./COMP.Stats.Sanity.gd)       |
-| `COMP.Stats.Stamina`               | Manages action economy and physical endurance.                                       | [COMP.Stats.Stamina.gd](./COMP.Stats.Stamina.gd)                                 |
-| `COMP.Targeting.Eye`               | Area3D volumetric enemy scanner. Feeds filtered target lists to LockOnComponent.    | [COMP.Targeting.Eye.gd](./COMP.Targeting.Eye.gd)                                 |
-| `COMP.Locomotion.FootfallSensor`   | BoneAttachment3D per-foot ground sensor. Emits `foot_stepped` / `foot_lifted`.      | [COMP.Locomotion.FootfallSensor.gd](./COMP.Locomotion.FootfallSensor.gd)         |
-| `COMP.Locomotion.FootstepAudio`    | Routes foot contact audio through GameEvents.spatial_sound_requested (SKILL-004).   | [COMP.Locomotion.FootstepAudio.gd](./COMP.Locomotion.FootstepAudio.gd)           |
-| `COMP.World.Loot`      | Handles XP awarding and physical item spawning on death.                  | [COMP.World.Loot.gd](./COMP.World.Loot.gd)           |
-| `CharacterState`       | Base class for character states.                                          | [CharacterState.gd](./CharacterState.gd)             |
-| `InputBufferComponent` | Centralized input buffering system.                                       | [InputBufferComponent.gd](./InputBufferComponent.gd) |
-| `StateManager`         | Base class for state machines.                                            | [StateManager.gd](./StateManager.gd)                 |
+## Active Artifacts
+
+| Artifact ID                      | Description                                                                       | Source                                                                   |
+| :------------------------------- | :-------------------------------------------------------------------------------- | :----------------------------------------------------------------------- |
+| `COMP.AI.Detection`              | Standard awareness module for AI agents.                                          | [COMP.AI.Detection.gd](./sensors/COMP.AI.Detection.gd)                   |
+| `COMP.AI.Interaction`            | Standard raycast logic for player interaction with objects.                       | [COMP.AI.Interaction.gd](./sensors/COMP.AI.Interaction.gd)               |
+| `COMP.AI.Navigation`             | Standard pathfinding interface using NavigationAgent3D.                           | [COMP.AI.Navigation.gd](./COMP.AI.Navigation.gd)                         |
+| `COMP.Camera.LockOn`             | Rotational binding logic for third-person camera targeting.                       | [COMP.Camera.LockOn.gd](./COMP.Camera.LockOn.gd)                         |
+| `COMP.Inventory.Main`            | Standard item container and management hub.                                       | [COMP.Inventory.Main.gd](./COMP.Inventory.Main.gd)                       |
+| `COMP.Physics.Health`            | Core health management and invincibility handling.                                | [COMP.Physics.Health.gd](./COMP.Physics.Health.gd)                       |
+| `COMP.Physics.Hitbox`            | Standardized damage application proxy for Area3Ds.                                | [COMP.Physics.Hitbox.gd](./COMP.Physics.Hitbox.gd)                       |
+| `COMP.Physics.Hurtbox`           | Centralized damage reception logic for living entities.                           | [COMP.Physics.Hurtbox.gd](./COMP.Physics.Hurtbox.gd)                     |
+| `COMP.State.Dodge`               | Handles directional dodge rolling with state-locking and duration limits.         | [COMP.State.Dodge.gd](./COMP.State.Dodge.gd)                             |
+| `COMP.State.Jump`                | Modular state for handling entity jumping. Strictly decoupled from input.         | [COMP.State.Jump.gd](./COMP.State.Jump.gd)                               |
+| `COMP.Stats.Attribute`           | Handles base stats and derives combat modifiers.                                  | [COMP.Stats.Attribute.gd](./COMP.Stats.Attribute.gd)                     |
+| `COMP.Stats.Main`                | Centralized statistics hub handling level, XP, and attribute bonuses.             | [COMP.Stats.Main.gd](./COMP.Stats.Main.gd)                               |
+| `COMP.Stats.Poise`               | Manages stability and stagger thresholds.                                         | [COMP.Stats.Poise.gd](./COMP.Stats.Poise.gd)                             |
+| `COMP.Stats.Sanity`              | Atomized psychological health tracker. Manages Sanity, Shadow Resonance,          | [COMP.Stats.Sanity.gd](./COMP.Stats.Sanity.gd)                           |
+| `COMP.Stats.Stamina`             | Manages action economy and physical endurance.                                    | [COMP.Stats.Stamina.gd](./COMP.Stats.Stamina.gd)                         |
+| `COMP.Targeting.Eye`             | Area3D volumetric enemy scanner. Feeds filtered target lists to LockOnComponent.  | [COMP.Targeting.Eye.gd](./COMP.Targeting.Eye.gd)                         |
+| `COMP.Locomotion.FootfallSensor` | BoneAttachment3D per-foot ground sensor. Emits `foot_stepped` / `foot_lifted`.    | [COMP.Locomotion.FootfallSensor.gd](./COMP.Locomotion.FootfallSensor.gd) |
+| `COMP.Locomotion.FootstepAudio`  | Routes foot contact audio through GameEvents.spatial_sound_requested (SKILL-004). | [COMP.Locomotion.FootstepAudio.gd](./COMP.Locomotion.FootstepAudio.gd)   |
+| `COMP.World.Loot`                | Handles XP awarding and physical item spawning on death.                          | [COMP.World.Loot.gd](./COMP.World.Loot.gd)                               |
+| `CharacterState`                 | Base class for character states.                                                  | [CharacterState.gd](./CharacterState.gd)                                 |
+| `InputBufferComponent`           | Centralized input buffering system.                                               | [InputBufferComponent.gd](./InputBufferComponent.gd)                     |
+| `StateManager`                   | Base class for state machines.                                                    | [StateManager.gd](./StateManager.gd)                                     |
 
 ---
 

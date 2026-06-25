@@ -1,28 +1,33 @@
-"""
-[GVRN]
-Artifact ID: CharacterState
-Description: Base class for character states.
-"""
 extends Node
+class_name State
 
-class_name CharacterState
+@export var state_name: String
+@export var state_machine: StateManager
 
-# The entity this state is controlling. The StateMachine will inject this automatically.
+@export var actor: CharacterBody3D
+@export var anim: AnimationPlayer
+@export var camera: PlayerCamera
+@export var animation_tree: AnimationTree
 
-var character: CharacterBody3D
-
-## Called exactly once when the state machine enters this state.
-func enter() -> void:
+func enter(msg: Dictionary = {}) -> void:
 	pass
 
-## Called exactly once when the state machine exits this state.
 func exit() -> void:
 	pass
 
-## Called every frame. Good for standard visual updates or polling inputs.
-func update(_delta: float) -> void:
+func process_update(delta: float) -> void:
 	pass
 
-## Called every physics frame. Good for movement, timers, and collision logic.
-func physics_update(_delta: float) -> void:
+func physics_update(delta: float) -> void:
 	pass
+
+func handle_input(event: InputEvent) -> void:
+	pass
+
+func show() -> void:
+	set_process(true)
+	set_physics_process(true)
+
+func hide() -> void:
+	set_process(false)
+	set_physics_process(false)

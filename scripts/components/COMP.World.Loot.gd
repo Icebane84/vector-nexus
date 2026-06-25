@@ -40,7 +40,7 @@ func _drop_physical_item(data: ItemData) -> void:
 				parent.get_parent().add_child(inst)
 			else:
 				get_tree().current_scene.add_child(inst)
-			
+
 			# Apply physical pop-out impulse (upward and outward random force)
 			var force_direction = Vector3(
 				randf_range(-1.5, 1.5),
@@ -48,7 +48,7 @@ func _drop_physical_item(data: ItemData) -> void:
 				randf_range(-1.5, 1.5)
 			)
 			inst.apply_central_impulse(force_direction)
-			
+
 			# Play spawn audio
 			var spawn_sfx = load("res://audio/SoundFX/special/Spawn01.wav") as AudioStream
 			if spawn_sfx:

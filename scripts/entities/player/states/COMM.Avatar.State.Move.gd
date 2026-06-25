@@ -27,7 +27,7 @@ func physics_update(delta: float) -> void:
 	if _check_environmental_transitions(): return
 
 	var input: Vector2 = actor.get_movement_input() if actor.has_method(&"get_movement_input") else Input.get_vector(&"move_left", &"move_right", &"move_forward", &"move_back")
-	
+
 	# Determine movement direction
 	var move_dir := Vector3.ZERO
 	if input.length() >= 0.1:
@@ -40,7 +40,7 @@ func physics_update(delta: float) -> void:
 	var target_locked: Node3D = null
 	if camera and camera.lock_on and is_instance_valid(camera.lock_on.current_target):
 		target_locked = camera.lock_on.current_target
-		
+
 	# Store previous rotation for turn leaning
 	var prev_rot_y = actor.visuals.rotation.y
 
@@ -56,15 +56,15 @@ func physics_update(delta: float) -> void:
 		actor.strafing = false
 		if input.length() >= 0.1:
 			Orient.apply_lerped_rotation(actor, move_dir, rotation_speed, delta)
-			
+
 	# Procedural Lean Calculation
 	var delta_rot_y = wrapf(actor.visuals.rotation.y - prev_rot_y, -PI, PI)
 	var turn_rate = delta_rot_y / delta
 	var lean_target = clampf(turn_rate * 0.08, -0.25, 0.25) if input.length() >= 0.1 else 0.0
 	actor.visuals.rotation.z = lerp(actor.visuals.rotation.z, lean_target, 1.0 - exp(-10.0 * delta))
-		
+
 	_apply_movement_velocity(move_dir, delta)
-	
+
 	var stamina: Node = actor.get_stamina_component() if actor.has_method(&"get_stamina_component") else null
 	ActionTrans.check_standard_actions(state_machine, stamina)
 

@@ -16,11 +16,6 @@ class_name AnimationTreeSoulsBase
 @onready var gadget_type : String = "SHIELD"
 @onready var interact_type :String = "GENERIC"
 @onready var current_item : ItemData
-@export var max_attack_count : int = 2 ## how many attacks you have in the attack tree
-@onready var attack_count = 1 ## Used in the anim state tree. The oneShot for the
-## ATTACK_tree, under SLASH and HEAVY each route to an animation will use this 
-## variable under it's advanced expression to know which route to take.
-@onready var attack_timer = Timer.new()
 @onready var hurt_count = 1
 
 @onready var anim_length
@@ -39,26 +34,21 @@ func _ready():
 	if _initialized:
 		return
 	_initialized = true
-	
+
 	# PHOENIX-GVRN: Ensure advanced expressions evaluate in our own script scope
 	advance_expression_base_node = get_path()
-	
-	if not attack_timer.get_parent():
-		add_child(attack_timer)
-	attack_timer.one_shot = true
-	attack_timer.timeout.connect(_on_attack_timer_timeout)
-	
+
 	if !player_node:
 		push_warning(str(self) + ": Player node must be set")
-		
+
 	if not animation_started.is_connected(_on_animation_started):
 		animation_started.connect(_on_animation_started)
-		
+
 	player_node.dodge_started.connect(_on_dodge_started)
 	player_node.jump_started.connect(_on_jump_started)
 	player_node.sprint_started.connect(_on_sprint_started)
 	player_node.landed_fall.connect(_on_landed_fall)
-	
+
 	player_node.interact_started.connect(_on_interact_started)
 	player_node.climb_started.connect(_on_climb_start)
 	#player_node.ladder_finished.connect(_on_ladder_finished)
@@ -66,15 +56,15 @@ func _ready():
 	player_node.weapon_change_started.connect(_on_weapon_change_started)
 	player_node.weapon_change_ended.connect(_on_weapon_change_ended)
 	player_node.attack_started.connect(_on_attack_started)
-	
+
 	player_node.gadget_change_started.connect(_on_gadget_change_started)
 	player_node.gadget_change_ended.connect(_on_gadget_change_ended)
 	player_node.gadget_started.connect(_on_gadget_started)
-	
+
 	player_node.item_change_started.connect(_on_item_change_started)
 	player_node.item_change_ended.connect(_on_item_change_ended)
 	player_node.use_item_started.connect(_on_use_item_started)
-		
+
 	player_node.parry_started.connect(_on_parry_started)
 	player_node.hurt_started.connect(_on_hurt_started)
 	player_node.block_started.connect(_on_block_started)
@@ -84,18 +74,17 @@ func _ready():
 	_on_weapon_change_ended(player_node.weapon_type)
 	_on_gadget_change_ended(player_node.gadget_type)
 	_on_item_change_ended(player_node.current_item)
-	
+
 func _process(delta: float) -> void:
 	if player_node.strafing:
 		set_strafe(delta)
 	else:
 		set_free_move(delta)
-		
+
 	if player_node.current_state == player_node.state.CLIMB:
 		set_ladder()
-		
-	set_guarding(delta)
 
+	set_guarding(delta)
 
 func request_oneshot(oneshot:String):
 	last_oneshot = oneshot
@@ -117,13 +106,9 @@ func _on_parry_started():
 	request_oneshot("Parry")
 
 func _on_attack_started():
+	# The PlayerAttackState is responsible for setting the combo index via the "attack_count" parameter.
+	# This function just needs to trigger the animation playback.
 	request_oneshot("Attack")
-	await animation_measured
-	attack_timer.start(anim_length +.2)
-	attack_count +=1
-	if attack_count > max_attack_count:
-		attack_count = 1
-
 
 func _on_block_started():
 	request_oneshot("Block")
@@ -136,11 +121,10 @@ func _on_hurt_started(): ## Picks a hurt animation between "Hurt1" and "Hurt2"
 		hurt_count = randi_range(1,2)
 		request_oneshot("Hurt")
 		current_weapon_tree.start("MoveStrafe")
-		
+
 func abort_oneshot(_last_oneshot:String):
 	set("parameters/" + _last_oneshot + "/request",AnimationNodeOneShot.ONE_SHOT_REQUEST_ABORT)
 
-	
 func _on_death_started():
 	base_state_machine.travel("Death")
 
@@ -152,7 +136,7 @@ func _on_gadget_started():
 
 func _on_sprint_started():
 	base_state_machine.travel("SPRINT_tree")
-	
+
 func _on_dodge_started():
 	request_oneshot("Dodge")
 
@@ -160,7 +144,6 @@ func _on_interact_started(_new_interact_type):
 	interact_type = _new_interact_type
 	await get_tree().process_frame
 	request_oneshot("Interacts")
-			
 
 func _on_jump_started():
 	request_oneshot("Jump")
@@ -194,11 +177,11 @@ func _on_climb_start():
 	#base_state_machine.start("LADDER_tree")
 	base_state_machine.travel("LADDER_tree")
 	#ladder_state_machine.travel("LadderStart_" + top_or_bottom)
-	
+
 #func _on_ladder_finished(top_or_bottom):
 	##ladder_state_machine.travel("LadderEnd_" + top_or_bottom)
 	#pass
-	
+
 func set_ladder():
 	#set("parameters/MovementStates/LADDER_tree/LadderBlend/blend_position",-player_node.input_dir.y)
 	#var ladder_frame = get("parameters/MovementStates/LADDER_tree/LadderBlender/blend_position")
@@ -210,7 +193,7 @@ func set_ladder():
 	#set("parameters/MovementStates/LADDER_tree/LadderBlender/blend_position",ladder_frame - (player_node.input_dir.y * .015)) # otherwise, play the animation at the speed of player input (* a speed if climb anim is slow)
 	print(player_node.input_dir.y)
 	set("parameters/MovementStates/LADDER_tree/LadderTime/scale",-player_node.input_dir.y)
-			
+
 func set_strafe(delta: float) -> void:
 	# Strafe left and right animations run by the player's velocity cross product
 	# Forward and back are acording to input, since direction changes by fixed camera orientation
@@ -234,7 +217,6 @@ func set_free_move(delta: float) -> void:
 	lerp_movement = lerp(lerp_movement, new_blend, 1.0 - exp(-12.0 * delta))
 	set("parameters/MovementStates/" + weapon_type + "_tree/MoveStrafe/blend_position",lerp_movement)
 
-
 func _on_animation_started(anim_name: StringName) -> void:
 	var player_node_ref = get_node_or_null(anim_player)
 	if player_node_ref and player_node_ref.has_animation(anim_name):
@@ -242,6 +224,3 @@ func _on_animation_started(anim_name: StringName) -> void:
 		if anim_res:
 			anim_length = anim_res.length
 			animation_measured.emit(anim_length)
-
-func _on_attack_timer_timeout():
-	attack_count = 1

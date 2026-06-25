@@ -34,12 +34,12 @@ func physics_update(delta: float) -> void:
 			direction.y = 0.0
 			var speed = actor.get(&"patrol_speed") if actor.get(&"patrol_speed") else 2.0
 			actor.velocity = direction * speed
-			
+
 			# Face the patrol point
 			if direction.length_squared() > 0.001:
 				var target_angle = atan2(-direction.x, -direction.z)
 				actor.visuals.rotation.y = lerp_angle(actor.visuals.rotation.y, target_angle, 10.0 * delta)
-				
+
 			actor.move_and_slide()
 		else:
 			if anim and anim.current_animation != &"idle" and anim.has_animation(&"idle"):

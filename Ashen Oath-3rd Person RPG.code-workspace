@@ -1,82 +1,83 @@
 {
-    "folders": [
-        {
-            "path": "."
-        }
+  "folders": [
+    {
+      "path": ".",
+    },
+    {
+      "path": "../Darksouls Like Starter Kit",
+    },
+  ],
+  "settings": {
+    "godot-tabs-formatter.enabled": true,
+    "godot-tabs-formatter.debug": true,
+    "[gdscript]": {
+      "editor.defaultFormatter": "EddieDover.gdscript-formatter-linter",
+      "editor.formatOnSave": true,
+    },
+    "godotTools.editorPath.godot4": "C:\\Users\\Chris\\Godot_4.6\\godot.exe",
+    "godotTools.editorPath": "C:\\Users\\Chris\\Godot_4.6\\godot.exe",
+    "godotTools.lsp.headless": false,
+    "cSpell.words": [
+      "Axion",
+      "cooldown",
+      "deadzone",
+      "Gamemaster",
+      "hitbox",
+      "Hitbox",
+      "Hitboxes",
+      "hurtbox",
+      "Hurtbox",
+      "regen",
+      "Respawning",
+      "Synarche",
+      "wikilinks",
     ],
-    "settings": {
-        "godot-tabs-formatter.enabled": true,
-        "godot-tabs-formatter.debug": true,
-        "[gdscript]": {
-            "editor.defaultFormatter": "EddieDover.gdscript-formatter-linter",
-            "editor.formatOnSave": true
-        },
-        "godotTools.editorPath.godot4": "C:\\Users\\Chris\\Godot_4.6\\godot.exe",
-        "godotTools.editorPath": "C:\\Users\\Chris\\Godot_4.6\\godot.exe",
-        "godotTools.lsp.headless": false,
-        "cSpell.words": [
-            "Axion",
-            "cooldown",
-            "deadzone",
-            "Gamemaster",
-            "hitbox",
-            "Hitbox",
-            "Hitboxes",
-            "hurtbox",
-            "Hurtbox",
-            "regen",
-            "Respawning",
-            "Synarche",
-            "wikilinks"
-        ],
-        "powershell.cwd": "Ashen Oath-3rd Person RPG",
-        "python-envs.pythonProjects": [
-            {
-                "path": "./tools/python/agent/bootstrap_nexus.py",
-                "envManager": "ms-python.python:venv",
-                "packageManager": "ms-python.python:pip",
-                "workspace": "Ashen Oath-3rd Person RPG"
-            }
-        ],
-        "markdown.validate.enabled": true,
-        "npm.enableRunFromFolder": true,
-        "mypy-type-checker.interpreter": [
-            "[]"
-        ],
-        "mypy-type-checker.path": [
-            "C:\\DevEnvironments\\master_env\\Scripts\\mypy.exe"
-        ],
-        "mypy-type-checker.preferDaemon": true,
-        "python.analysis.typeCheckingMode": "strict",
-        "python.analysis.referencesCodeLens": true,
-        "python.analysis.inlayHints.variableTypes": true,
-        "python.analysis.inlayHints.pytestParameters": true,
-        "python.analysis.inlayHints.functionReturnTypes": true,
-        "python.analysis.inlayHints.callArgumentNames": "all",
-        "python.analysis.indexing.followSymlinkedFolders": false,
-        "python.analysis.indexing": false,
-        "python.analysis.enableTroubleshootMissingImports": true,
-        "prettier.experimentalTernaries": true,
-        "eslint.debug": true,
-        "eslint.format.enable": true,
-        "eslint.lintTask.enable": true,
-        "eslint.run": "onSave",
-        "geminicodeassist.agentDebugMode": true,
-        "geminicodeassist.enableTelemetry": false,
-        "python.analysis.autoFormatStrings": true,
-        "python.analysis.autoImportCompletions": true,
-        "python.pyrefly.configPath": "C:\\Users\\Chris\\Synarche_Workspace\\axion-core\\standards\\pyrefly.toml",
-        "python.pyrefly.runnableCodeLens": true,
-        "python.defaultInterpreterPath": "C:\\DevEnvironments\\master_env\\Scripts\\python.exe",
-        "python.experiments.enabled": false,
-        "python.testing.pytestEnabled": true,
-        "python.useEnvironmentsExtension": true,
-        "debugpy.showPythonInlineValues": true,
-        "ruff.codeAction.disableRuleComment": {
-            "enable": false
-        },
-        "sqltools.autoOpenSessionFiles": false,
-        "godotNodeTree.projectPath": "\"C:\\Users\\Chris\\Ashen Oath-3rd Person RPG\"",
-        "terminal.integrated.defaultProfile.windows": "PowerShell"
-    }
+    "powershell.cwd": "Ashen Oath-3rd Person RPG",
+    "python-envs.pythonProjects": [
+      {
+        "path": "./tools/python/agent/bootstrap_nexus.py",
+        "envManager": "ms-python.python:venv",
+        "packageManager": "ms-python.python:pip",
+        "workspace": "Ashen Oath-3rd Person RPG",
+      },
+    ],
+    "markdown.validate.enabled": true,
+    "npm.enableRunFromFolder": true,
+    "mypy-type-checker.interpreter": ["[]"],
+    "mypy-type-checker.path": [
+      "C:\\DevEnvironments\\master_env\\Scripts\\mypy.exe",
+    ],
+    "mypy-type-checker.preferDaemon": true,
+    "python.analysis.typeCheckingMode": "strict",
+    "python.analysis.referencesCodeLens": true,
+    "python.analysis.inlayHints.variableTypes": true,
+    "python.analysis.inlayHints.pytestParameters": true,
+    "python.analysis.inlayHints.functionReturnTypes": true,
+    "python.analysis.inlayHints.callArgumentNames": "all",
+    "python.analysis.indexing.followSymlinkedFolders": false,
+    "python.analysis.indexing": false,
+    "python.analysis.enableTroubleshootMissingImports": true,
+    "prettier.experimentalTernaries": true,
+    "eslint.debug": true,
+    "eslint.format.enable": true,
+    "eslint.lintTask.enable": true,
+    "eslint.run": "onSave",
+    "geminicodeassist.agentDebugMode": true,
+    "geminicodeassist.enableTelemetry": false,
+    "python.analysis.autoFormatStrings": true,
+    "python.analysis.autoImportCompletions": true,
+    "python.pyrefly.configPath": "C:\\Users\\Chris\\Synarche_Workspace\\axion-core\\standards\\pyrefly.toml",
+    "python.pyrefly.runnableCodeLens": true,
+    "python.defaultInterpreterPath": "C:\\DevEnvironments\\master_env\\Scripts\\python.exe",
+    "python.experiments.enabled": false,
+    "python.testing.pytestEnabled": true,
+    "python.useEnvironmentsExtension": true,
+    "debugpy.showPythonInlineValues": true,
+    "ruff.codeAction.disableRuleComment": {
+      "enable": false,
+    },
+    "sqltools.autoOpenSessionFiles": false,
+    "godotNodeTree.projectPath": "\"C:\\Users\\Chris\\Ashen Oath-3rd Person RPG\"",
+    "terminal.integrated.defaultProfile.windows": "PowerShell",
+  },
 }

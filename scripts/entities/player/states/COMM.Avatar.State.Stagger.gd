@@ -6,7 +6,6 @@
 extends "res://scripts/entities/player/states/COMM.Avatar.State.ActionBlock.gd"
 class_name PlayerStaggerState
 
-
 var _duration: float = 0.6
 @export var duration: float:
 	get: return _duration
@@ -30,7 +29,7 @@ func _get_voice_sound() -> AudioStream:
 func enter(_msg: Dictionary = {}) -> void:
 	super.enter(_msg)
 	_timer = duration
-	
+
 	var voice = _get_voice_sound()
 	if voice and actor:
 		GameEvents.instance.spatial_sound_requested.emit(voice, actor.global_position, 0.0, 0.1)
@@ -47,13 +46,12 @@ func enter(_msg: Dictionary = {}) -> void:
 				if anim.has_animation(&"idle"):
 					anim.play(&"idle")
 
-	
 	# Clear any buffered inputs on stagger to avoid "Ghost Attacks" after stun
 	# This is the inverse of SKILL-010 for negative states.
 
 func physics_update(delta: float) -> void:
 	super.physics_update(delta)
 	_timer -= delta
-	
+
 	if _timer <= 0:
 		state_machine.transition_to(&"Idle")

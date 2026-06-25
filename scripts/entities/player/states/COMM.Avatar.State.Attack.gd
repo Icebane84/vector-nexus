@@ -28,6 +28,22 @@ var _state_duration: float = 0.6
 	get(): return _state_duration
 	set(v): _state_duration = v
 
+@export_group("Procedural Animation")
+@export var proc_lunge_speed: float = 14.0
+@export var proc_lunge_duration: float = 0.25
+@export var proc_spin_duration: float = 0.3
+@export var proc_slam_leap_vertical: float = 5.0
+@export var proc_slam_leap_horizontal: float = 10.0
+@export var proc_slam_force_vertical: float = 8.0
+@export var proc_slam_force_horizontal: float = 12.0
+
+@export_group("Combo Scaling")
+@export var combo_1_dmg_scale: float = 0.9
+@export var combo_2_dmg_scale: float = 1.0
+@export var combo_2_poise_scale: float = 1.2
+@export var combo_3_dmg_scale: float = 1.6
+@export var combo_3_poise_scale: float = 2.2
+
 var _timer: float = 0.0
 var _hit_landed: bool = false
 var _buffered_input: bool = false
@@ -115,14 +131,14 @@ func _process_hitbox() -> void:
 
 		match _combo_index:
 			0:
-				active_damage = damage * 0.9      # Snappy opener
+				active_damage = damage * combo_1_dmg_scale      # Snappy opener
 				active_poise = hitbox.poise_damage
 			1:
-				active_damage = damage * 1.0      # Medium follow-up
-				active_poise = hitbox.poise_damage * 1.2
+				active_damage = damage * combo_2_dmg_scale      # Medium follow-up
+				active_poise = hitbox.poise_damage * combo_2_poise_scale
 			2:
-				active_damage = damage * 1.6      # Heavy overhead slam finisher!
-				active_poise = hitbox.poise_damage * 2.2
+				active_damage = damage * combo_3_dmg_scale      # Heavy overhead slam finisher!
+				active_poise = hitbox.poise_damage * combo_3_poise_scale
 
 		hitbox.damage = active_damage
 		hitbox.poise_damage = active_poise
@@ -166,25 +182,25 @@ func _trigger_procedural_slash() -> void:
 	match _combo_index:
 		0: # Phase 0: Clockwise spin-slash + forward-right lunge
 			var target_rot: float = actor.visuals.rotation.y + TAU
-			tween_rot.tween_property(actor.visuals, "rotation:y", target_rot, 0.3)\
+			tween_rot.tween_property(actor.visuals, "rotation:y", target_rot, proc_spin_duration)\
 				.set_trans(Tween.TRANS_QUAD)\
 				.set_ease(Tween.EASE_OUT)
 
 			var lunge_dir := facing_dir.rotated(Vector3.UP, -PI / 8.0)
-			actor.velocity = lunge_dir * 14.0
-			tween_vel.tween_property(actor, "velocity", Vector3.ZERO, 0.25)\
+			actor.velocity = lunge_dir * proc_lunge_speed
+			tween_vel.tween_property(actor, "velocity", Vector3.ZERO, proc_lunge_duration)\
 				.set_trans(Tween.TRANS_SINE)\
 				.set_ease(Tween.EASE_OUT)
 
 		1: # Phase 1: Counter-clockwise spin-slash + forward-left lunge
 			var target_rot: float = actor.visuals.rotation.y - TAU
-			tween_rot.tween_property(actor.visuals, "rotation:y", target_rot, 0.3)\
+			tween_rot.tween_property(actor.visuals, "rotation:y", target_rot, proc_spin_duration)\
 				.set_trans(Tween.TRANS_QUAD)\
 				.set_ease(Tween.EASE_OUT)
 
 			var lunge_dir := facing_dir.rotated(Vector3.UP, PI / 8.0)
-			actor.velocity = lunge_dir * 14.0
-			tween_vel.tween_property(actor, "velocity", Vector3.ZERO, 0.25)\
+			actor.velocity = lunge_dir * proc_lunge_speed
+			tween_vel.tween_property(actor, "velocity", Vector3.ZERO, proc_lunge_duration)\
 				.set_trans(Tween.TRANS_SINE)\
 				.set_ease(Tween.EASE_OUT)
 
@@ -206,10 +222,10 @@ func _trigger_procedural_slash() -> void:
 				.set_ease(Tween.EASE_OUT)
 
 			# Vertical leap + forward lunge
-			actor.velocity = facing_dir * 10.0 + Vector3.UP * 5.0
+			actor.velocity = facing_dir * proc_slam_leap_horizontal + Vector3.UP * proc_slam_leap_vertical
 
 			# Sudden downward slam force
-			tween_vel.tween_property(actor, "velocity", facing_dir * 12.0 + Vector3.DOWN * 8.0, 0.2)\
+			tween_vel.tween_property(actor, "velocity", facing_dir * proc_slam_force_horizontal + Vector3.DOWN * proc_slam_force_vertical, 0.2)\
 				.set_trans(Tween.TRANS_QUAD)\
 				.set_ease(Tween.EASE_IN)
 			tween_vel.tween_property(actor, "velocity", Vector3.ZERO, 0.15)\

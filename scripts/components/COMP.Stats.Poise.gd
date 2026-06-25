@@ -21,10 +21,17 @@ var current_poise: float:
 	set(v):
 		if is_hyper_armor_active: return
 		_current_poise = clamp(v, 0.0, max_poise)
-		if _current_poise <= 0.0: 
+		# If poise drops to 0 or below, trigger posture broken and reset poise.
+		if _current_poise <= 0.0:
 			posture_broken.emit()
-			_current_poise = max_poise
-func _ready() -> void: _current_poise = max_poise
+
+func _ready() -> void:
+	_current_poise = max_poise
 
 func apply_poise_damage(amount: float) -> void:
 	self.current_poise -= amount
+
+## Resets the poise back to its maximum value.
+## Should be called by the entity's state machine when exiting a stagger state.
+func reset_poise() -> void:
+	_current_poise = max_poise

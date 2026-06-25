@@ -150,11 +150,25 @@ func _ready() -> void:
 		var tree_root_res = load("res://assets/Models/PlayerAnimTreeRoot.tres") as AnimationNode
 		if tree_root_res:
 			animation_tree.tree_root = tree_root_res
-			
+
 	if animation_player:
 		var melee_lib = load("res://assets/Models/MeleeLib.res") as AnimationLibrary
 		if melee_lib:
 			animation_player.add_animation_library(&"MeleeLib", melee_lib)
+
+	# PHOENIX-GVRN: Plug-and-Play Combat Animation Loader (from progress.md)
+	# This ensures the "attack" animation is available to the AnimationTree.
+	var attack_anim_path := "res://assets/Models/ModelAnimations/attack.res"
+	if animation_player and FileAccess.file_exists(attack_anim_path):
+		var attack_anim := load(attack_anim_path) as Animation
+		if attack_anim:
+			var default_lib := animation_player.get_animation_library(&"")
+			if not default_lib:
+				default_lib = AnimationLibrary.new()
+				animation_player.add_animation_library(&"", default_lib)
+			if not default_lib.has_animation(&"attack"):
+				default_lib.add_animation(&"attack", attack_anim)
+				print("PHOENIX_LOG: Dynamically loaded and registered 'attack' animation.")
 
 	if animation_tree:
 		var anim_tree_script = load("res://scripts/entities/player/player_anim_tree.gd") as Script
@@ -163,6 +177,10 @@ func _ready() -> void:
 			animation_tree.set("player_node", self)
 			if animation_tree.has_method("_ready"):
 				animation_tree.call("_ready")
+
+			# CRITICAL FIX: Connect the AnimationTree to the AnimationPlayer.
+			# The AnimationTree cannot control animations without this link.
+			animation_tree.anim_player = NodePath(animation_player.get_path())
 			animation_tree.active = true
 
 	_setup_bridge()
@@ -171,10 +189,10 @@ func _ready() -> void:
 	_setup_weapon()
 
 	# Initialize Inventory Component
-	inventory_component = InventoryComponent.new()
-	inventory_component.name = &"InventoryComponent"
-	add_child(inventory_component)
-	inventory_component.inventory_updated.connect(
+	var inv_comp = InventoryComponent.new()
+	inv_comp.name = &"InventoryComponent"
+	add_child(inv_comp)
+	inv_comp.inventory_updated.connect(
 		func():
 			if current_item == null:
 				cycle_active_item()
@@ -184,9 +202,10 @@ func _ready() -> void:
 	var potion_res = load("res://resources/items/potion.tres") as ConsumableItemScript
 	var firebomb_res = load("res://resources/items/firebomb.tres") as ConsumableItemScript
 	if potion_res:
-		inventory_component.add_item(potion_res.duplicate() as ConsumableItemScript)
+		inv_comp.add_item(potion_res.duplicate() as ConsumableItemScript)
 	if firebomb_res:
-		inventory_component.add_item(firebomb_res.duplicate() as ConsumableItemScript)
+		inv_comp.add_item(firebomb_res.duplicate() as ConsumableItemScript)
+	inventory_component = inv_comp
 
 	# Initialize active item
 	cycle_active_item()
@@ -290,25 +309,25 @@ func _physics_process(delta: float) -> void:
 		var instability: float = 100.0 - sanity_component.current_sanity if sanity_component else 0.0
 		manifestation_system.update(delta, instability)
 		active_delay = manifestation_system.active_input_delay
-		
+
 		# Drive the sentient weapon's judgment state
 		if weapon_mesh and weapon_mesh.has_method(&"judge_wielder"):
 			weapon_mesh.judge_wielder(self)
-			
+
 		if corruption_material:
 			corruption_material.set_shader_parameter(&"corruption_intensity", manifestation_system.current_distortion)
-			
+
 			# Kaelen: Dynamic Light/Dark Mode color palette interpolation
 			var w: float = clamp((instability - 25.0) / 75.0, 0.0, 1.0)
-			
+
 			# Light Mode: Silver (#C0C0C0) and Gold (#D4AF37)
 			var base_light := Color(0.753, 0.753, 0.753)
 			var void_light := Color(0.831, 0.686, 0.216)
-			
+
 			# Dark Mode: Obsidian/Midnight Blue (#0D1B2A) and Crimson (#8B0000)
 			var base_dark := Color(0.051, 0.106, 0.165)
 			var void_dark := Color(0.545, 0.0, 0.0)
-			
+
 			corruption_material.set_shader_parameter(&"base_color", base_light.lerp(base_dark, w))
 			corruption_material.set_shader_parameter(&"void_color", void_light.lerp(void_dark, w))
 
@@ -377,7 +396,7 @@ func _setup_weapon() -> void:
 	var skeleton = _find_skeleton(visuals)
 	if not skeleton:
 		return
-		
+
 	# Find or create RightHandAttachment (SKILL-014 dependency injection)
 	weapon_attachment = skeleton.find_child("RightHandAttachment", true, false)
 	if not weapon_attachment:
@@ -385,7 +404,7 @@ func _setup_weapon() -> void:
 		weapon_attachment.name = &"RightHandAttachment"
 		weapon_attachment.bone_name = &"RightHand"
 		skeleton.add_child(weapon_attachment)
-	
+
 	# Instantiate Kaelen's Oathbringer sentient weapon logic (SKILL-022)
 	weapon_mesh = Oathbringer.new()
 	weapon_mesh.name = &"Oathbringer"
@@ -394,7 +413,7 @@ func _setup_weapon() -> void:
 	if oathbringer_ugs:
 		weapon_mesh.set(&"ugs_mesh", oathbringer_ugs)
 	weapon_attachment.add_child(weapon_mesh)
-	
+
 	# Apply corruption shader override to active weapon meshes
 	if corruption_material:
 		if oathbringer_longsword:
